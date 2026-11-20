@@ -460,7 +460,50 @@ export function computeFamilyTreeLayout(
     }
   }
 
-  // 5. Generate Connectors & Branches
+  // 5. Strict Non-Overlapping Collision Resolution Pass
+  // MATHEMATICAL GUARANTEE: No two nodes in any tier can ever overlap horizontally.
+  for (const lvl of sortedTierKeys) {
+    const tierNodes = nodes.filter(n => n.normalizedLevel === lvl).sort((a, b) => a.x - b.x);
+    if (tierNodes.length <= 1) continue;
+
+    const minGap = mode === 'living_tree' ? SIBLING_GAP_ORGANIC : 48;
+
+    for (let i = 1; i < tierNodes.length; i++) {
+      const prev = tierNodes[i - 1];
+      const curr = tierNodes[i];
+      if (!prev || !curr) continue;
+
+      const prevHalfW = mode === 'living_tree' ? prev.radius : prev.width / 2;
+      const currHalfW = mode === 'living_tree' ? curr.radius : curr.width / 2;
+      const minRequiredX = prev.x + prevHalfW + minGap + currHalfW;
+
+      if (curr.x < minRequiredX) {
+        const pushAmount = minRequiredX - curr.x;
+        // Push this node and all subsequent nodes in this tier to the right
+        for (let j = i; j < tierNodes.length; j++) {
+          const targetNode = tierNodes[j];
+          if (!targetNode) continue;
+          targetNode.x += pushAmount;
+          if (targetNode.x > maxCanvasX) maxCanvasX = targetNode.x + 80;
+        }
+      }
+    }
+  }
+
+  // 6. Left Margin Safety Guarantee: Ensure left-most node has at least 50px margin
+  if (nodes.length > 0) {
+    const allLeftEdges = nodes.map(n => n.x - (mode === 'living_tree' ? n.radius : n.width / 2));
+    const minCanvasLeft = Math.min(...allLeftEdges);
+    if (minCanvasLeft < 50) {
+      const leftShift = 50 - minCanvasLeft;
+      for (const n of nodes) {
+        n.x += leftShift;
+      }
+      maxCanvasX += leftShift;
+    }
+  }
+
+  // 7. Generate Connectors & Branches
   const organicBranches: OrganicBranch[] = [];
   const leafClusters: LeafCluster[] = [];
   const genealogyConnectors: GenealogyConnector[] = [];

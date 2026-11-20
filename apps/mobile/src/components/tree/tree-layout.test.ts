@@ -121,3 +121,58 @@ test('FamilyTreeLayout: Multiple mothers or multiple fathers kinship & non-overl
   assert.ok(!conn.path.includes('NaN'));
 });
 
+test('FamilyTreeLayout: Guarantee that two nodes shall never overlap in any tier', () => {
+  const people: Person[] = [
+    { id: '1', name: 'Grandfather 1', gender: 'male', createdAt: '' },
+    { id: '2', name: 'Grandmother 1', gender: 'female', createdAt: '' },
+    { id: '3', name: 'Father 1', gender: 'male', relationship: 'Father', createdAt: '' },
+    { id: '4', name: 'Mother 1', gender: 'female', relationship: 'Mother', createdAt: '' },
+    { id: '5', name: 'Mother 2 (Step)', gender: 'female', relationship: 'Step-Mother', createdAt: '' },
+    { id: '6', name: 'Child 1', relationship: 'Sister', createdAt: '' },
+    { id: '7', name: 'Child 2', relationship: 'Brother', createdAt: '' },
+    { id: '8', name: 'Child 3', relationship: 'Brother', createdAt: '' },
+    { id: '9', name: 'Child 4', relationship: 'Sister', createdAt: '' }
+  ];
+
+  const relationships: FamilyRelationship[] = [
+    { id: 'r1', personA: 'Grandfather 1', personB: 'Father 1', relation: 'parent', status: 'confirmed' },
+    { id: 'r2', personA: 'Father 1', personB: 'Mother 1', relation: 'spouse', status: 'confirmed' },
+    { id: 'r3', personA: 'Father 1', personB: 'Mother 2 (Step)', relation: 'spouse', status: 'confirmed' },
+    { id: 'r4', personA: 'Father 1', personB: 'Child 1', relation: 'parent', status: 'confirmed' },
+    { id: 'r5', personA: 'Mother 1', personB: 'Child 1', relation: 'parent', status: 'confirmed' },
+    { id: 'r6', personA: 'Father 1', personB: 'Child 2', relation: 'parent', status: 'confirmed' },
+    { id: 'r7', personA: 'Father 1', personB: 'Child 3', relation: 'parent', status: 'confirmed' },
+    { id: 'r8', personA: 'Mother 2 (Step)', personB: 'Child 4', relation: 'parent', status: 'confirmed' }
+  ];
+
+  for (const mode of ['genealogy_graph', 'living_tree'] as const) {
+    const layout = computeFamilyTreeLayout(people, relationships, mode);
+    assert.equal(layout.nodes.length, people.length);
+
+    // Group by normalizedLevel
+    const tiers = new Map<number, typeof layout.nodes>();
+    for (const node of layout.nodes) {
+      if (!tiers.has(node.normalizedLevel)) tiers.set(node.normalizedLevel, []);
+      tiers.get(node.normalizedLevel)!.push(node);
+    }
+
+    // Verify for every tier that no two nodes overlap
+    for (const [tierLevel, tierNodes] of tiers.entries()) {
+      tierNodes.sort((a, b) => a.x - b.x);
+      for (let i = 0; i < tierNodes.length - 1; i++) {
+        const nodeA = tierNodes[i];
+        const nodeB = tierNodes[i + 1];
+        if (!nodeA || !nodeB) continue;
+
+        const rightEdgeA = nodeA.x + (mode === 'living_tree' ? nodeA.radius : nodeA.width / 2);
+        const leftEdgeB = nodeB.x - (mode === 'living_tree' ? nodeB.radius : nodeB.width / 2);
+
+        assert.ok(
+          leftEdgeB >= rightEdgeA,
+          `Nodes ${nodeA.name} and ${nodeB.name} in tier ${tierLevel} overlap! rightEdgeA=${rightEdgeA}, leftEdgeB=${leftEdgeB}`
+        );
+      }
+    }
+  }
+});
+
