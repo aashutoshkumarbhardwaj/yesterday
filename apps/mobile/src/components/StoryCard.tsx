@@ -191,7 +191,7 @@ export function StoryCard({ story, onRefresh }: StoryCardProps) {
       setComments((prev) => prev.filter((c) => c.id !== commentId));
       try {
         await deleteCommentClient(commentId);
-      } catch {}
+      } catch { }
     } catch (err) {
       Alert.alert("Error", "Could not delete comment.");
     }
@@ -230,7 +230,7 @@ export function StoryCard({ story, onRefresh }: StoryCardProps) {
           perspectiveText: text,
           dateCorrection: dateCorrectionInput.trim() || null
         });
-      } catch {}
+      } catch { }
 
       Alert.alert("Perspective Added", "Your perspective has been attached to this family memory.");
     } catch (err) {
