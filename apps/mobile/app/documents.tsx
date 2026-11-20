@@ -203,7 +203,7 @@ export default function DocumentsScreen() {
             <View style={styles.resultsHeader}>
               <Text style={styles.resultsTitle}>EXTRACTED KNOWLEDGE</Text>
               <View style={styles.docTypeBadge}>
-                <Text style={styles.docTypeBadgeText}>{result.documentType.toUpperCase()}</Text>
+                <Text style={styles.docTypeBadgeText}>{(result.documentType || 'DOCUMENT').toUpperCase()}</Text>
               </View>
             </View>
 

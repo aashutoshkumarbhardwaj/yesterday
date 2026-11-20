@@ -20,6 +20,39 @@ const SIBLING_GAP_ORGANIC = 48;
 const SIBLING_GAP_GRAPH = 36;
 const FAMILY_GROUP_GAP = 64;
 
+function detectParentChild(pA: Person, pB: Person, rel: string): { parent: Person; child: Person } {
+  const relA = (pA.relationship || '').toLowerCase();
+  const relB = (pB.relationship || '').toLowerCase();
+  const byA = pA.birthYear;
+  const byB = pB.birthYear;
+
+  // 1. Clear birth year difference (> 14 years)
+  if (byA && byB) {
+    if (byA < byB - 14) return { parent: pA, child: pB };
+    if (byB < byA - 14) return { parent: pB, child: pA };
+  }
+
+  // 2. Kinship labels on person objects
+  const isAParent = /father|mother|parent|chacha|mama|uncle|aunt|bua|maasi|dada|nana/i.test(relA);
+  const isBParent = /father|mother|parent|chacha|mama|uncle|aunt|bua|maasi|dada|nana/i.test(relB);
+  const isAChild = /son|daughter|child|kid|nephew|niece/i.test(relA);
+  const isBChild = /son|daughter|child|kid|nephew|niece/i.test(relB);
+
+  if (isAParent || isBChild) return { parent: pA, child: pB };
+  if (isBParent || isAChild) return { parent: pB, child: pA };
+
+  // 3. Fallback based on relation verb
+  if (/parent|father|mother/i.test(rel)) {
+    return { parent: pA, child: pB };
+  } else {
+    // 'child', 'son', 'daughter'
+    if (pB.name.toLowerCase() === 'me' || pB.name.toLowerCase() === 'self') {
+      return { parent: pB, child: pA };
+    }
+    return { parent: pA, child: pB };
+  }
+}
+
 export function computeFamilyTreeLayout(
   people: Person[],
   relationships: FamilyRelationship[],
@@ -65,31 +98,87 @@ export function computeFamilyTreeLayout(
 
     const idA = pA.id;
     const idB = pB.id;
-    const rel = r.relation.toLowerCase().trim();
+    const rel = (r.relation || (r as any).type || '').toLowerCase().trim();
     const status: 'confirmed' | 'suggested' = r.status === 'suggested' ? 'suggested' : 'confirmed';
     relStatusMap.set(`${idA}:${idB}`, status);
     relStatusMap.set(`${idB}:${idA}`, status);
 
-    if (rel === 'parent' || rel === 'father' || rel === 'mother' || rel === 'adoptive parent' || rel === 'step-parent') {
-      if (!childrenMap.has(idA)) childrenMap.set(idA, []);
-      childrenMap.get(idA)!.push(idB);
-      if (!parentsMap.has(idB)) parentsMap.set(idB, []);
-      parentsMap.get(idB)!.push(idA);
-    } else if (rel === 'child' || rel === 'son' || rel === 'daughter' || rel === 'adopted child' || rel === 'step-child') {
-      if (!childrenMap.has(idB)) childrenMap.set(idB, []);
-      childrenMap.get(idB)!.push(idA);
-      if (!parentsMap.has(idA)) parentsMap.set(idA, []);
-      parentsMap.get(idA)!.push(idB);
-    } else if (rel === 'spouse' || rel === 'partner' || rel === 'husband' || rel === 'wife') {
+    if (
+      rel === 'parent' || rel === 'father' || rel === 'mother' ||
+      rel === 'adoptive parent' || rel === 'step-parent' ||
+      rel === 'child' || rel === 'son' || rel === 'daughter' ||
+      rel === 'adopted child' || rel === 'step-child' ||
+      rel.includes('parent') || rel.includes('father') || rel.includes('mother') ||
+      rel.includes('child') || rel.includes('son') || rel.includes('daughter')
+    ) {
+      const { parent, child } = detectParentChild(pA, pB, rel);
+      if (!childrenMap.has(parent.id)) childrenMap.set(parent.id, []);
+      if (!childrenMap.get(parent.id)!.includes(child.id)) childrenMap.get(parent.id)!.push(child.id);
+
+      if (!parentsMap.has(child.id)) parentsMap.set(child.id, []);
+      if (!parentsMap.get(child.id)!.includes(parent.id)) parentsMap.get(child.id)!.push(parent.id);
+    } else if (
+      rel === 'spouse' || rel === 'partner' || rel === 'husband' || rel === 'wife' ||
+      rel.includes('spouse') || rel.includes('husband') || rel.includes('wife')
+    ) {
       if (!spousesMap.has(idA)) spousesMap.set(idA, []);
-      spousesMap.get(idA)!.push(idB);
+      if (!spousesMap.get(idA)!.includes(idB)) spousesMap.get(idA)!.push(idB);
+
       if (!spousesMap.has(idB)) spousesMap.set(idB, []);
-      spousesMap.get(idB)!.push(idA);
-    } else if (rel === 'sibling' || rel === 'brother' || rel === 'sister' || rel === 'half-sibling') {
+      if (!spousesMap.get(idB)!.includes(idA)) spousesMap.get(idB)!.push(idA);
+    } else if (
+      rel === 'sibling' || rel === 'brother' || rel === 'sister' || rel === 'half-sibling' ||
+      rel.includes('sibling') || rel.includes('brother') || rel.includes('sister')
+    ) {
       if (!siblingsMap.has(idA)) siblingsMap.set(idA, []);
-      siblingsMap.get(idA)!.push(idB);
+      if (!siblingsMap.get(idA)!.includes(idB)) siblingsMap.get(idA)!.push(idB);
+
       if (!siblingsMap.has(idB)) siblingsMap.set(idB, []);
-      siblingsMap.get(idB)!.push(idA);
+      if (!siblingsMap.get(idB)!.includes(idA)) siblingsMap.get(idB)!.push(idA);
+    }
+  }
+
+  // Multi-pass Sibling & Spouse Co-Parent Propagation:
+  // Guarantees all sons / siblings are connected to parents
+  for (let pass = 0; pass < 2; pass++) {
+    // 1. If a parent has a single spouse, share children between them
+    for (const [pId, spList] of spousesMap.entries()) {
+      if (spList.length === 1 && spList[0]) {
+        const spId = spList[0];
+        const pChildren = childrenMap.get(pId) || [];
+        for (const cId of pChildren) {
+          if (!childrenMap.has(spId)) childrenMap.set(spId, []);
+          if (!childrenMap.get(spId)!.includes(cId)) childrenMap.get(spId)!.push(cId);
+
+          if (!parentsMap.has(cId)) parentsMap.set(cId, []);
+          if (!parentsMap.get(cId)!.includes(spId)) parentsMap.get(cId)!.push(spId);
+        }
+      }
+    }
+
+    // 2. Siblings share parents
+    for (const [pId, sibList] of siblingsMap.entries()) {
+      const pParents = parentsMap.get(pId) || [];
+      for (const sibId of sibList) {
+        for (const parentId of pParents) {
+          if (!parentsMap.has(sibId)) parentsMap.set(sibId, []);
+          if (!parentsMap.get(sibId)!.includes(parentId)) parentsMap.get(sibId)!.push(parentId);
+
+          if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
+          if (!childrenMap.get(parentId)!.includes(sibId)) childrenMap.get(parentId)!.push(sibId);
+        }
+      }
+    }
+
+    // 3. Children of the same parent are siblings
+    for (const [, cList] of childrenMap.entries()) {
+      for (const c1 of cList) {
+        for (const c2 of cList) {
+          if (c1 === c2) continue;
+          if (!siblingsMap.has(c1)) siblingsMap.set(c1, []);
+          if (!siblingsMap.get(c1)!.includes(c2)) siblingsMap.get(c1)!.push(c2);
+        }
+      }
     }
   }
 
@@ -660,21 +749,20 @@ export function computeFamilyTreeLayout(
         const parentMaxBottomY = Math.max(...coParentNodes.map(p => p.y + GRAPH_CARD_HEIGHT / 2));
         const midY = parentMaxBottomY + 28;
 
-        const allX = [
-          ...coParentNodes.map(p => p.x),
-          ...childNodes.map(c => c.x)
-        ];
-        const busMinX = Math.min(...allX);
-        const busMaxX = Math.max(...allX);
+        const allChildX = childNodes.map(c => c.x);
+        const parentStemX = coParentNodes.length > 1
+          ? (Math.min(...coParentNodes.map(p => p.x)) + Math.max(...coParentNodes.map(p => p.x))) / 2
+          : (coParentNodes[0]?.x ?? parent.x);
+
+        const busMinX = Math.min(...allChildX, parentStemX);
+        const busMaxX = Math.max(...allChildX, parentStemX);
 
         let pathStr = '';
-        // 1. Each parent drops vertically to the midY bus bar
-        for (const pNode of coParentNodes) {
-          const pBottomY = pNode.y + GRAPH_CARD_HEIGHT / 2;
-          pathStr += `M ${pNode.x} ${pBottomY} L ${pNode.x} ${midY} `;
-        }
+        // 1. Central parent vertical drop stem from parent marriage union down to midY
+        // (Matching the Stitch heirloom design with milestone dots)
+        pathStr += `M ${parentStemX} ${parentMaxBottomY} L ${parentStemX} ${midY} `;
 
-        // 2. Horizontal bus bar spans cleanly between all parents and children
+        // 2. Horizontal bus bar spans cleanly across all children (e.g. both sons)
         if (busMinX < busMaxX) {
           pathStr += `M ${busMinX} ${midY} L ${busMaxX} ${midY} `;
         }

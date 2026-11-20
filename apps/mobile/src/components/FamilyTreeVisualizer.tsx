@@ -264,15 +264,17 @@ export const FamilyTreeVisualizer = React.forwardRef<FamilyTreeVisualizerHandle,
         />
 
         {/* Full Person Profile Modal */}
-        <PersonProfileModal
-          person={inspectedPerson}
-          allPeople={people}
-          relationships={relationships}
-          onClose={() => setInspectedPerson(null)}
-          onPersonUpdated={() => onRefresh?.()}
-          onDeletePerson={handleDeleteFromModal}
-          onSelectRelative={p => setInspectedPerson(p)}
-        />
+        {inspectedPerson ? (
+          <PersonProfileModal
+            person={inspectedPerson}
+            allPeople={people}
+            relationships={relationships}
+            onClose={() => setInspectedPerson(null)}
+            onPersonUpdated={() => onRefresh?.()}
+            onDeletePerson={handleDeleteFromModal}
+            onSelectRelative={p => setInspectedPerson(p)}
+          />
+        ) : null}
       </View>
     );
   }

@@ -315,18 +315,38 @@ export async function registerGraphRoutes(app: FastifyInstance) {
     }
   });
 
-  // Person Timeline and Evidence
-  app.get("/v1/graph/person/:id/timeline", async (request, reply) => {
+  // Person Timeline and Evidence (Supports both /person/:id and /people/:id)
+  const handleTimeline = async (id: string, familyId?: string) => {
+    const fId = familyId || getPerson(id)?.familyId || "default-family";
+    return { success: true, timeline: getPersonTimeline(id, fId) };
+  };
+
+  const handleEvidence = async (id: string, familyId?: string) => {
+    const fId = familyId || getPerson(id)?.familyId || "default-family";
+    return { success: true, evidence: getPersonEvidence(id, fId) };
+  };
+
+  app.get("/v1/graph/person/:id/timeline", async (request) => {
     const { id } = request.params as { id: string };
     const { familyId } = request.query as { familyId?: string };
-    if (!familyId) return reply.code(400).send({ error: "FAMILY_ID_REQUIRED" });
-    return { success: true, timeline: getPersonTimeline(id, familyId) };
+    return handleTimeline(id, familyId);
   });
 
-  app.get("/v1/graph/person/:id/evidence", async (request, reply) => {
+  app.get("/v1/graph/person/:id/evidence", async (request) => {
     const { id } = request.params as { id: string };
     const { familyId } = request.query as { familyId?: string };
-    if (!familyId) return reply.code(400).send({ error: "FAMILY_ID_REQUIRED" });
-    return { success: true, evidence: getPersonEvidence(id, familyId) };
+    return handleEvidence(id, familyId);
+  });
+
+  app.get("/v1/graph/people/:id/timeline", async (request) => {
+    const { id } = request.params as { id: string };
+    const { familyId } = request.query as { familyId?: string };
+    return handleTimeline(id, familyId);
+  });
+
+  app.get("/v1/graph/people/:id/evidence", async (request) => {
+    const { id } = request.params as { id: string };
+    const { familyId } = request.query as { familyId?: string };
+    return handleEvidence(id, familyId);
   });
 }

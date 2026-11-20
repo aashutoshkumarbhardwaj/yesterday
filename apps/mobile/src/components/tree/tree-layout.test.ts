@@ -176,3 +176,38 @@ test('FamilyTreeLayout: Guarantee that two nodes shall never overlap in any tier
   }
 });
 
+test('FamilyTreeLayout: All family members including both sons are connected to parents', () => {
+  const people: Person[] = [
+    { id: 'f1', name: 'Vikram', relationship: 'Father', birthYear: 1974, gender: 'male', createdAt: '' },
+    { id: 'm1', name: 'Ananya', relationship: 'Mother', birthYear: 1978, gender: 'female', createdAt: '' },
+    { id: 's1', name: 'Aashutosh', relationship: 'Self', birthYear: 2003, gender: 'male', createdAt: '' },
+    { id: 's2', name: 'Aryan', relationship: 'Brother', birthYear: 2006, gender: 'male', createdAt: '' }
+  ];
+
+  // Father & Mother are spouses; Aashutosh is son of Vikram; Aryan is brother of Aashutosh
+  const relationships: FamilyRelationship[] = [
+    { id: 'r1', personA: 'Vikram', personB: 'Ananya', relation: 'spouse', status: 'confirmed' },
+    { id: 'r2', personA: 'Vikram', personB: 'Aashutosh', relation: 'parent', status: 'confirmed' },
+    { id: 'r3', personA: 'Aashutosh', personB: 'Aryan', relation: 'brother', status: 'confirmed' }
+  ];
+
+  const res = computeFamilyTreeLayout(people, relationships, 'genealogy_graph');
+  assert.equal(res.nodes.length, 4);
+
+  const aashutosh = res.nodes.find(n => n.name === 'Aashutosh');
+  const aryan = res.nodes.find(n => n.name === 'Aryan');
+  assert.ok(aashutosh && aryan);
+
+  // Both sons must recognize Vikram and Ananya as parents
+  assert.ok(aashutosh.parentIds.includes('f1'), 'Aashutosh should have Vikram as parent');
+  assert.ok(aashutosh.parentIds.includes('m1'), 'Aashutosh should have Ananya as parent');
+  assert.ok(aryan.parentIds.includes('f1'), 'Aryan (second son) should also have Vikram as parent');
+  assert.ok(aryan.parentIds.includes('m1'), 'Aryan (second son) should also have Ananya as parent');
+
+  // Verify orthogonal genealogy parent-child connector links both sons
+  const parentChildConnector = res.genealogyConnectors.find(c => c.type === 'parent_child');
+  assert.ok(parentChildConnector, 'Parent-child connector must be generated');
+  assert.ok(parentChildConnector.path.includes(`L ${aashutosh.x}`), 'Connector must drop into Aashutosh');
+  assert.ok(parentChildConnector.path.includes(`L ${aryan.x}`), 'Connector must drop into Aryan');
+});
+

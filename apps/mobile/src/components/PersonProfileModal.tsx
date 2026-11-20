@@ -37,7 +37,7 @@ import {
 import { fetchPersonEvidence, type FactEvidenceItem } from '../lib/api';
 
 interface PersonProfileModalProps {
-  person: Person | null;
+  person: Person;
   allPeople: Person[];
   relationships: FamilyRelationship[];
   onClose: () => void;
@@ -55,19 +55,17 @@ export function PersonProfileModal({
   onDeletePerson,
   onSelectRelative
 }: PersonProfileModalProps) {
-  if (!person) return null;
-
   const [activeTab, setActiveTab] = useState<'info' | 'photos' | 'audio' | 'family' | 'timeline' | 'evidence'>('info');
   const [isEditing, setIsEditing] = useState(false);
 
   // Form State
-  const [name, setName] = useState(person.name);
-  const [relationship, setRelationship] = useState(person.relationship || '');
-  const [gender, setGender] = useState<'male' | 'female' | 'other'>(person.gender || 'male');
-  const [birthYear, setBirthYear] = useState(person.birthYear ? String(person.birthYear) : '');
-  const [birthPlace, setBirthPlace] = useState(person.birthPlace || '');
-  const [notes, setNotes] = useState(person.notes || '');
-  const [avatarUri, setAvatarUri] = useState<string | null>(person.avatarUri || null);
+  const [name, setName] = useState(person?.name || '');
+  const [relationship, setRelationship] = useState(person?.relationship || '');
+  const [gender, setGender] = useState<'male' | 'female' | 'other'>(person?.gender || 'male');
+  const [birthYear, setBirthYear] = useState(person?.birthYear ? String(person.birthYear) : '');
+  const [birthPlace, setBirthPlace] = useState(person?.birthPlace || '');
+  const [notes, setNotes] = useState(person?.notes || '');
+  const [avatarUri, setAvatarUri] = useState<string | null>(person?.avatarUri || null);
 
   // Media
   const [mediaList, setMediaList] = useState<PersonMedia[]>([]);
@@ -91,6 +89,7 @@ export function PersonProfileModal({
   const [audioTitle, setAudioTitle] = useState('');
 
   useEffect(() => {
+    if (!person) return;
     setName(person.name);
     setRelationship(person.relationship || '');
     setGender(person.gender || 'male');
@@ -330,6 +329,8 @@ export function PersonProfileModal({
     const spouses: Person[] = [];
     const siblings: Person[] = [];
 
+    if (!person) return { parents, children, spouses, siblings };
+
     const personNameLower = person.name.toLowerCase().trim();
 
     for (const r of relationships) {
@@ -370,6 +371,8 @@ export function PersonProfileModal({
 
   const isFemale = gender === 'female';
   const isMale = gender === 'male';
+
+  if (!person) return null;
 
   return (
     <Modal
