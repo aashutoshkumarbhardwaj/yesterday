@@ -76,7 +76,7 @@ export interface StoredFamilySession {
 }
 
 let cachedSession: StoredFamilySession | null = null;
-let customServerUrl: string = process.env.EXPO_PUBLIC_API_URL || 'https://franchise-gig-launches-morning.trycloudflare.com';
+let customServerUrl: string = process.env.EXPO_PUBLIC_API_URL || 'https://celebrities-zero-tones-manga.trycloudflare.com';
 let initialized = false;
 
 export async function initSyncSession(): Promise<StoredFamilySession | null> {

@@ -299,7 +299,6 @@ export function StoryCard({ story, onRefresh }: StoryCardProps) {
                 <Ionicons name="person-circle-outline" size={14} color={colors.terra} />
                 <Text style={styles.contribAuthor}>{c.contributorName}</Text>
                 {c.dateCorrection ? (
-                  <Text style={styles.contribDateCorrection}>· Year note: {c.dateCorrection}</Text>
                   <Text style={styles.contribDateCorrection}>· Note: {c.dateCorrection}</Text>
                 ) : null}
               </View>
@@ -479,15 +478,12 @@ export function StoryCard({ story, onRefresh }: StoryCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
     backgroundColor: '#FFFDF9',
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
     borderColor: '#EAE1D5',
     padding: 16,
     gap: 12,
-    marginBottom: 12
     marginBottom: 14,
     shadowColor: '#3E2723',
     shadowOffset: { width: 0, height: 2 },

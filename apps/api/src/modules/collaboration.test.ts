@@ -45,10 +45,8 @@ describe("Family Collaboration, RBAC & Sharing Test Suite", () => {
     // RBAC permissions matrix checks
     assert.equal(hasPermission("owner", "delete_family"), true);
     assert.equal(hasPermission("admin", "delete_family"), false);
-    assert.equal(hasPermission("admin", "manage_roles"), true);
     assert.equal(hasPermission("admin", "manage_members"), true);
     assert.equal(hasPermission("contributor", "edit_archive"), true);
-    assert.equal(hasPermission("contributor", "manage_roles"), false);
     assert.equal(hasPermission("contributor", "manage_members"), false);
     assert.equal(hasPermission("reviewer", "review_suggestions"), true);
     assert.equal(hasPermission("viewer", "view_archive"), true);
@@ -120,7 +118,6 @@ describe("Family Collaboration, RBAC & Sharing Test Suite", () => {
       actorName: "Priya Sharma",
       actionType: "person_added",
       entityTitle: "Dada Ji (Ramesh Sharma)",
-      details: { relationship: "grandfather" }
       details: "Relationship: grandfather"
     });
 

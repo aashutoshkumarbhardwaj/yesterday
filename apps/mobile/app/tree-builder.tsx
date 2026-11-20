@@ -502,43 +502,34 @@ export default function TreeBuilderScreen() {
                   <View style={styles.welcomeIconWrap}>
                     <Ionicons name="mic-circle" size={48} color={colors.terra} />
                   </View>
-                  <Text style={styles.welcomeTitle}>Speak or Type Your Family Story</Text>
                   <Text style={styles.welcomeTitle}>Preserve Your Family’s Living Voices</Text>
                   <Text style={styles.welcomeBody}>
-                    Tell me about your parents, grandparents, siblings, or spouse. You can speak in English or Hindi (or any Indian language). I will extract names and link them into your family tree!
                     Speak naturally in your mother tongue or write memories down. Mention elders, childhood hometowns, migrations, or weddings. We will carefully weave every relative into your living family archive.
                   </Text>
 
                   <View style={styles.starterCardsContainer}>
-                    <Text style={styles.starterLabel}>TAP A STARTER TO TRY:</Text>
                     <Text style={styles.starterLabel}>TRY TELLING A MEMORY:</Text>
                     <Pressable
-                      onPress={() => sendMessage('My father is Ramesh Sharma and my mother is Sunita')}
                       onPress={() => sendMessage('My father Ramesh Sharma and my mother Sunita were married in 1974')}
                       style={styles.starterCard}
                     >
                       <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.terra} />
-                      <Text style={styles.starterCardText}>"My father is Ramesh Sharma and my mother is Sunita"</Text>
                       <Text style={styles.starterCardText}>"My father Ramesh Sharma and my mother Sunita were married in 1974"</Text>
                     </Pressable>
 
                     <Pressable
-                      onPress={() => sendMessage('My paternal grandfather is Dina Nath from Jaipur')}
                       onPress={() => sendMessage('My paternal grandfather Dina Nath lived in Varanasi and had three sons')}
                       style={styles.starterCard}
                     >
                       <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.terra} />
-                      <Text style={styles.starterCardText}>"My paternal grandfather is Dina Nath from Jaipur"</Text>
                       <Text style={styles.starterCardText}>"My paternal grandfather Dina Nath lived in Varanasi and had three sons"</Text>
                     </Pressable>
 
                     <Pressable
-                      onPress={() => sendMessage('Who is in my family tree right now?')}
                       onPress={() => sendMessage('Who is currently documented in our family tree?')}
                       style={styles.starterCard}
                     >
                       <Ionicons name="help-circle-outline" size={16} color={colors.green} />
-                      <Text style={styles.starterCardText}>"Who is in my family tree right now?"</Text>
                       <Text style={styles.starterCardText}>"Who is currently documented in our family tree?"</Text>
                     </Pressable>
                   </View>
@@ -718,7 +709,6 @@ export default function TreeBuilderScreen() {
               <TextInput
                 value={inputMessage}
                 onChangeText={setInputMessage}
-                placeholder={recorderState.isRecording ? 'Listening to your voice...' : 'Tell me a family member or ask...'}
                 placeholder={recorderState.isRecording ? 'Listening to your voice...' : 'Share an elder’s memory, hometown, or family name...'}
                 placeholderTextColor={colors.muted}
                 style={styles.textInput}
@@ -880,7 +870,7 @@ export default function TreeBuilderScreen() {
               />
 
               <Pressable
-                onPress={() => setServerInputUrl('https://butler-conjunction-homeland-george.trycloudflare.com')}
+                onPress={() => setServerInputUrl('https://celebrities-zero-tones-manga.trycloudflare.com')}
                 style={styles.quickTunnelPill}
               >
                 <Ionicons name="cloud-done" size={14} color={colors.white} />
