@@ -1,8 +1,8 @@
 import * as SQLite from 'expo-sqlite';
 
 export type Story = { id: string; title: string; narrative: string; transcript: string | null; sourceType: string; sourceUri: string | null; createdAt: string; reviewStatus: string };
-export type Person = { id: string; name: string; relationship: string | null; notes: string | null; gender?: 'male' | 'female' | 'other' | null; birthYear?: number | null; birthPlace?: string | null; avatarUri?: string | null; createdAt: string; reviewStatus: string };
-export type SuggestedPerson = { name: string; relationshipToNarrator?: string | null; notes?: string | null; gender?: 'male' | 'female' | 'other' | null; birthYear?: number | null; birthPlace?: string | null };
+export type Person = { id: string; name: string; relationship: string | null; notes: string | null; gender?: 'male' | 'female' | 'other' | null; birthYear?: number | null; deathYear?: number | null; birthPlace?: string | null; avatarUri?: string | null; createdAt: string; reviewStatus: string };
+export type SuggestedPerson = { name: string; relationshipToNarrator?: string | null; notes?: string | null; gender?: 'male' | 'female' | 'other' | null; birthYear?: number | null; deathYear?: number | null; birthPlace?: string | null };
 export type SuggestedRelationship = { personA: string; personB: string; type: string; confidence?: string; evidence: string };
 export type FamilyRelationship = { id: string; personA: string; personB: string; relation: string; status: string; evidence: string | null };
 export type TreeMessage = { id: string; role: 'user' | 'assistant'; content: string; extractedJson?: string | null; createdAt: string };
@@ -35,6 +35,7 @@ async function db() {
       const names = new Set(cols.map(c => c.name));
       if (!names.has('gender')) await database.execAsync('ALTER TABLE people ADD COLUMN gender TEXT');
       if (!names.has('birth_year')) await database.execAsync('ALTER TABLE people ADD COLUMN birth_year INTEGER');
+      if (!names.has('death_year')) await database.execAsync('ALTER TABLE people ADD COLUMN death_year INTEGER');
       if (!names.has('birth_place')) await database.execAsync('ALTER TABLE people ADD COLUMN birth_place TEXT');
       if (!names.has('avatar_uri')) await database.execAsync('ALTER TABLE people ADD COLUMN avatar_uri TEXT');
     } catch (e) {
@@ -66,11 +67,137 @@ export async function saveStory(input: { title: string; narrative: string; trans
   }
   return id;
 }
+export async function seedSharmaHeritageIfEmpty(): Promise<boolean> {
+  const d = await db();
+  const countRow = await d.getFirstAsync<{ count: number }>('SELECT count(*) as count FROM people');
+  if (countRow && countRow.count > 0) {
+    return false;
+  }
+
+  const now = new Date().toISOString();
+  // 1. Insert 7 Members of Sharma Heritage
+  const peopleData = [
+    {
+      id: 'person-hariram',
+      name: 'Hariram Sharma',
+      relationship: 'Great-Grandfather',
+      gender: 'male',
+      birthYear: 1920,
+      deathYear: 1998,
+      birthPlace: 'Amritsar, Punjab',
+      notes: 'Preserved 18 ancestral archives. Patriarch of the Sharma line.',
+      avatarUri: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=240'
+    },
+    {
+      id: 'person-kamla',
+      name: 'Kamla Devi',
+      relationship: 'Great-Grandmother',
+      gender: 'female',
+      birthYear: 1925,
+      deathYear: 2004,
+      birthPlace: 'Lahore / Amritsar',
+      notes: 'Preserved 14 stories. Matriarch and custodian of family folklore.',
+      avatarUri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=240'
+    },
+    {
+      id: 'person-ramesh',
+      name: 'Ramesh Sharma',
+      relationship: 'Grandfather',
+      gender: 'male',
+      birthYear: 1948,
+      deathYear: 2015,
+      birthPlace: 'Haridwar, Uttarakhand',
+      notes: 'Preserved 24 memories. "The 1971 Ganges crossing oral history tapes".',
+      avatarUri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=240'
+    },
+    {
+      id: 'person-sushila',
+      name: 'Sushila Sharma',
+      relationship: 'Grandmother',
+      gender: 'female',
+      birthYear: 1952,
+      deathYear: null,
+      birthPlace: 'Dehradun, Uttarakhand',
+      notes: 'Preserved 9 cassette tapes. Educator and preserver of traditions.',
+      avatarUri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=240'
+    },
+    {
+      id: 'person-vikram',
+      name: 'Vikram Sharma',
+      relationship: 'Father',
+      gender: 'male',
+      birthYear: 1974,
+      deathYear: null,
+      birthPlace: 'New Delhi',
+      notes: 'Preserved 31 stories. Civil engineer and guardian of ancestral archives.',
+      avatarUri: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=240'
+    },
+    {
+      id: 'person-ananya',
+      name: 'Ananya Sharma',
+      relationship: 'Mother',
+      gender: 'female',
+      birthYear: 1978,
+      deathYear: null,
+      birthPlace: 'Jaipur, Rajasthan',
+      notes: 'Preserved 19 chronicles. Artist and chronicler of family heritage.',
+      avatarUri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=240'
+    },
+    {
+      id: 'person-aashutosh',
+      name: 'Aashutosh Sharma',
+      relationship: 'Self',
+      gender: 'male',
+      birthYear: 2003,
+      deathYear: null,
+      birthPlace: 'New Delhi',
+      notes: 'Narrator and custodian building the living heritage archive.',
+      avatarUri: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=240'
+    }
+  ];
+
+  for (const p of peopleData) {
+    await d.runAsync(
+      'INSERT INTO people (id, name, relationship, notes, gender, birth_year, death_year, birth_place, avatar_uri, created_at, review_status) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+      p.id, p.name, p.relationship, p.notes, p.gender, p.birthYear, p.deathYear ?? null, p.birthPlace, p.avatarUri, now, 'confirmed'
+    );
+  }
+
+  // 2. Insert Core Generational Relationships
+  const relsData = [
+    { id: 'rel-1', a: 'person-hariram', b: 'person-kamla', rel: 'spouse', ev: 'Married in 1943 (m. 1943)' },
+    { id: 'rel-2', a: 'person-hariram', b: 'person-ramesh', rel: 'parent', ev: 'Hariram is father of Ramesh' },
+    { id: 'rel-3', a: 'person-kamla', b: 'person-ramesh', rel: 'parent', ev: 'Kamla is mother of Ramesh' },
+    { id: 'rel-4', a: 'person-ramesh', b: 'person-sushila', rel: 'spouse', ev: 'Married in 1972 (m. 1972)' },
+    { id: 'rel-5', a: 'person-ramesh', b: 'person-vikram', rel: 'parent', ev: 'Ramesh is father of Vikram' },
+    { id: 'rel-6', a: 'person-sushila', b: 'person-vikram', rel: 'parent', ev: 'Sushila is mother of Vikram' },
+    { id: 'rel-7', a: 'person-vikram', b: 'person-ananya', rel: 'spouse', ev: 'Married in 2001 (m. 2001)' },
+    { id: 'rel-8', a: 'person-vikram', b: 'person-aashutosh', rel: 'parent', ev: 'Vikram is father of Aashutosh' },
+    { id: 'rel-9', a: 'person-ananya', b: 'person-aashutosh', rel: 'parent', ev: 'Ananya is mother of Aashutosh' }
+  ];
+
+  for (const r of relsData) {
+    await d.runAsync(
+      'INSERT INTO relationships (id, person_a, person_b, relation, status, evidence) VALUES (?,?,?,?,?,?)',
+      r.id, r.a, r.b, r.rel, 'confirmed', r.ev
+    );
+  }
+
+  return true;
+}
+
 export async function listPeople(): Promise<Person[]> {
   const d = await db();
-  return d.getAllAsync<Person>(
-    'SELECT id, name, relationship, notes, gender, birth_year as birthYear, birth_place as birthPlace, avatar_uri as avatarUri, created_at as createdAt, review_status as reviewStatus FROM people ORDER BY name COLLATE NOCASE'
+  const people = await d.getAllAsync<Person>(
+    'SELECT id, name, relationship, notes, gender, birth_year as birthYear, death_year as deathYear, birth_place as birthPlace, avatar_uri as avatarUri, created_at as createdAt, review_status as reviewStatus FROM people ORDER BY name COLLATE NOCASE'
   );
+  if (people.length === 0) {
+    await seedSharmaHeritageIfEmpty();
+    return d.getAllAsync<Person>(
+      'SELECT id, name, relationship, notes, gender, birth_year as birthYear, death_year as deathYear, birth_place as birthPlace, avatar_uri as avatarUri, created_at as createdAt, review_status as reviewStatus FROM people ORDER BY name COLLATE NOCASE'
+    );
+  }
+  return people;
 }
 export async function updatePersonReview(id: string, status: 'confirmed'|'disputed') { const d = await db(); await d.runAsync('UPDATE people SET review_status=? WHERE id=?',status,id); }
 

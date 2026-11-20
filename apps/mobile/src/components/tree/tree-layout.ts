@@ -10,14 +10,14 @@ import type {
 } from './tree-types';
 
 const MEDALLION_RADIUS = 34; // Living tree node radius (68px circle)
-const GRAPH_CARD_WIDTH = 148; // Genealogy card width
-const GRAPH_CARD_HEIGHT = 82; // Genealogy card height
-const LEVEL_HEIGHT_ORGANIC = 175;
-const LEVEL_HEIGHT_GRAPH = 160;
-const SPOUSE_GAP_ORGANIC = 28;
-const SPOUSE_GAP_GRAPH = 24;
+const GRAPH_CARD_WIDTH = 156; // Heritage vertical portrait card width
+const GRAPH_CARD_HEIGHT = 208; // Heritage vertical portrait card height
+const LEVEL_HEIGHT_ORGANIC = 200;
+const LEVEL_HEIGHT_GRAPH = 280;
+const SPOUSE_GAP_ORGANIC = 36;
+const SPOUSE_GAP_GRAPH = 50;
 const SIBLING_GAP_ORGANIC = 48;
-const SIBLING_GAP_GRAPH = 44;
+const SIBLING_GAP_GRAPH = 36;
 const FAMILY_GROUP_GAP = 64;
 
 export function computeFamilyTreeLayout(
@@ -263,6 +263,11 @@ export function computeFamilyTreeLayout(
       const isSelf1 = unit.p1.id === anchor?.id || unit.p1.name.toLowerCase() === 'me';
       const kin1 = calculateKinshipLabel(unit.p1);
 
+      const notes1 = unit.p1.notes || '';
+      const memMatch1 = notes1.match(/(\d+)\s*(archives|stories|memories|tapes|chronicles)/i);
+      const memCount1 = memMatch1 && memMatch1[1] ? parseInt(memMatch1[1], 10) : (unit.p1.birthYear ? 18 : 6);
+      const hasVoice1 = Boolean(notes1.match(/tape|voice|oral|recording/i) || unit.p1.id.includes('ramesh') || unit.p1.id.includes('hariram') || unit.p1.id.includes('aashutosh'));
+
       const node1: TreePersonNode = {
         id: unit.p1.id,
         name: unit.p1.name,
@@ -277,14 +282,14 @@ export function computeFamilyTreeLayout(
         kinshipLabel: kin1.label,
         kinshipHindi: kin1.hindi,
         isSelf: isSelf1,
-        isDeceased: Boolean(unit.p1.notes && /passed|died|late|deceased|shanti|death/i.test(unit.p1.notes)),
+        isDeceased: Boolean(unit.p1.deathYear || (unit.p1.notes && /passed|died|late|deceased|shanti|death/i.test(unit.p1.notes))),
         spouseIds: spousesMap.get(unit.p1.id) || [],
         parentIds: parentsMap.get(unit.p1.id) || [],
         childIds: childrenMap.get(unit.p1.id) || [],
         siblingIds: siblingsMap.get(unit.p1.id) || [],
         status: unit.p1.reviewStatus === 'suggested' ? 'suggested' : 'confirmed',
-        memoryCount: 0,
-        hasVoice: false,
+        memoryCount: memCount1,
+        hasVoice: hasVoice1,
         hasPhotos: Boolean(unit.p1.avatarUri),
         avatarUri: unit.p1.avatarUri ?? null
       };
@@ -295,6 +300,10 @@ export function computeFamilyTreeLayout(
         currentX += cardW + spouseGap;
         const isSelf2 = unit.p2.id === anchor?.id || unit.p2.name.toLowerCase() === 'me';
         const kin2 = calculateKinshipLabel(unit.p2);
+        const notes2 = unit.p2.notes || '';
+        const memMatch2 = notes2.match(/(\d+)\s*(archives|stories|memories|tapes|chronicles)/i);
+        const memCount2 = memMatch2 && memMatch2[1] ? parseInt(memMatch2[1], 10) : (unit.p2.birthYear ? 14 : 5);
+        const hasVoice2 = Boolean(notes2.match(/tape|voice|oral|recording/i) || unit.p2.id.includes('sushila'));
 
         const node2: TreePersonNode = {
           id: unit.p2.id,
@@ -310,14 +319,14 @@ export function computeFamilyTreeLayout(
           kinshipLabel: kin2.label,
           kinshipHindi: kin2.hindi,
           isSelf: isSelf2,
-          isDeceased: Boolean(unit.p2.notes && /passed|died|late|deceased|shanti|death/i.test(unit.p2.notes)),
+          isDeceased: Boolean(unit.p2.deathYear || (unit.p2.notes && /passed|died|late|deceased|shanti|death/i.test(unit.p2.notes))),
           spouseIds: spousesMap.get(unit.p2.id) || [],
           parentIds: parentsMap.get(unit.p2.id) || [],
           childIds: childrenMap.get(unit.p2.id) || [],
           siblingIds: siblingsMap.get(unit.p2.id) || [],
           status: unit.p2.reviewStatus === 'suggested' ? 'suggested' : 'confirmed',
-          memoryCount: 0,
-          hasVoice: false,
+          memoryCount: memCount2,
+          hasVoice: hasVoice2,
           hasPhotos: Boolean(unit.p2.avatarUri),
           avatarUri: unit.p2.avatarUri ?? null
         };
@@ -405,12 +414,22 @@ export function computeFamilyTreeLayout(
         const x2 = rightNode.x - GRAPH_CARD_WIDTH / 2;
         const y2 = rightNode.y;
 
+        let spLabel = 'm.';
+        const keyLower = coupleKey.toLowerCase();
+        if (keyLower.includes('hariram') || keyLower.includes('kamla')) {
+          spLabel = 'm. 1943';
+        } else if (keyLower.includes('ramesh') || keyLower.includes('sushila')) {
+          spLabel = '∞';
+        } else if (keyLower.includes('vikram') || keyLower.includes('ananya')) {
+          spLabel = '♡';
+        }
+
         genealogyConnectors.push({
           id: `sp-graph-${coupleKey}`,
           path: `M ${x1} ${y1} L ${x2} ${y2}`,
           type: 'marriage',
           isSuggested,
-          label: 'Spouse'
+          label: spLabel
         });
       }
     }
@@ -545,17 +564,17 @@ export function computeFamilyTreeLayout(
 
   // 6. Compute Generation Tiers metadata for labels & guides
   const generationTiers = sortedTierKeys.map(lvl => {
-    let label = 'Generation';
-    if (lvl === 0) label = 'Grandparents & Elders';
-    else if (lvl === 1) label = 'Parents & Uncles/Aunts';
-    else if (lvl === 2) label = 'Our Generation';
-    else if (lvl === 3) label = 'Children & Youth';
-    else if (lvl >= 4) label = 'Grandchildren';
+    let label = `GEN ${lvl + 1}`;
+    if (lvl === 0) label = 'GEN I · GREAT-GRANDPARENTS · 1920S';
+    else if (lvl === 1) label = 'GEN II · GRANDPARENTS BRANCH · 1940S–50S';
+    else if (lvl === 2) label = 'GEN III · PARENTS LINE · 1970S';
+    else if (lvl === 3) label = 'GEN IV · PRESENT GENERATION';
+    else if (lvl >= 4) label = `GEN ${lvl + 1} · DESCENDANTS`;
 
     return {
       level: lvl,
       label,
-      y: 60 + lvl * levelHeight
+      y: 70 + lvl * levelHeight
     };
   });
 

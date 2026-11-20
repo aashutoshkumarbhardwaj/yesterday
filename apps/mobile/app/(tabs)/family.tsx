@@ -1,10 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../src/components/Screen';
 import { colors, radius } from '../../src/theme';
-import { FamilyTreeVisualizer } from '../../src/components/FamilyTreeVisualizer';
+import { FamilyTreeVisualizer, type FamilyTreeVisualizerHandle } from '../../src/components/FamilyTreeVisualizer';
+import type { TreeKinshipFilter } from '../../src/components/tree/tree-types';
 import { useAuth } from '../../src/lib/auth-context';
 import {
   deletePerson,
@@ -24,9 +25,11 @@ import {
 
 export default function FamilyScreen() {
   const { user } = useAuth();
+  const visualizerRef = useRef<FamilyTreeVisualizerHandle>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [relationships, setRelationships] = useState<FamilyRelationship[]>([]);
   const [tabView, setTabView] = useState<'tree' | 'profiles'>('tree');
+  const [activeFilter, setActiveFilter] = useState<TreeKinshipFilter>('all');
   const [cloudSession, setCloudSession] = useState<StoredFamilySession | null>(getCachedSession());
 
   const refresh = useCallback(() => {
@@ -63,110 +66,109 @@ export default function FamilyScreen() {
 
   return (
     <Screen scroll={tabView !== 'tree'}>
-      {/* 1. Header Bar */}
-      <View style={styles.topRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Family Tree</Text>
-          <Text style={styles.subtitle}>A growing map of your ancestors and loved ones.</Text>
-        </View>
+      {/* 1. Heirloom Archive Header Bar */}
+      <View style={styles.heirloomHeader}>
+        <Text style={styles.archiveCategoryText}>YESTERDAY ARCHIVE</Text>
+        <View style={styles.archiveTitleRow}>
+          <Text numberOfLines={1} style={styles.archiveTitle}>
+            {cloudSession?.familyName || 'The Sharma Heritage'}
+          </Text>
 
-        <View style={styles.headerRightActions}>
-          <Pressable onPress={() => router.push('/tree-builder')} style={styles.interviewPillBtn}>
-            <Ionicons name="sparkles" size={13} color={colors.white} />
-            <Text style={styles.interviewPillText}>AI Interview</Text>
-          </Pressable>
+          <View style={styles.headerRightIcons}>
+            <Pressable onPress={() => visualizerRef.current?.openSearch()} style={styles.headerIconBtn}>
+              <Ionicons name="search" size={20} color="#2C221E" />
+            </Pressable>
 
-          <Pressable onPress={() => router.push('/login')} style={styles.profileBadge}>
-            {user ? (
-              <View style={styles.profileAvatar}>
-                <Text style={styles.profileAvatarText}>{user.name.charAt(0).toUpperCase()}</Text>
+            <Pressable onPress={() => visualizerRef.current?.openAddRelative()} style={styles.headerIconBtn}>
+              <Ionicons name="person-add-outline" size={20} color="#2C221E" />
+            </Pressable>
+
+            <Pressable onPress={() => router.push('/login')} style={styles.headerProfileBtn}>
+              <View style={styles.headerProfileAvatar}>
+                <Text style={styles.headerProfileAvatarText}>
+                  {user ? user.name.charAt(0).toUpperCase() : 'A'}
+                </Text>
               </View>
-            ) : (
-              <View style={styles.loginPill}>
-                <Ionicons name="person-circle-outline" size={15} color={colors.terra} />
-                <Text style={styles.loginPillText}>Sign In</Text>
-              </View>
-            )}
-          </Pressable>
+            </Pressable>
+          </View>
         </View>
-      </View>
 
-      {/* 2. Compact Cloud Collaboration Strip */}
-      <Pressable onPress={() => router.push('/family-share')} style={styles.cloudStrip}>
-        <View style={styles.cloudLeft}>
-          <View style={[styles.cloudDot, cloudSession?.membershipStatus === 'active' && styles.cloudDotActive]} />
-          <Text style={styles.cloudTitle} numberOfLines={1}>
-            {cloudSession ? `${cloudSession.familyName} (${cloudSession.inviteCode})` : 'Private Family Archive'}
-          </Text>
-          <Text style={styles.cloudSubtitle}>
-            {cloudSession ? `· ${cloudSession.userRole.toUpperCase()}` : '· Tap to invite family'}
-          </Text>
+        {/* 2. Generational Lineage Filter Chips */}
+        <View style={styles.filterChipRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            <Pressable
+              onPress={() => setActiveFilter('all')}
+              style={[styles.filterChip, activeFilter === 'all' && styles.filterChipActive]}
+            >
+              <Ionicons
+                name="git-network-outline"
+                size={13}
+                color={activeFilter === 'all' ? colors.white : '#5C4A3E'}
+              />
+              <Text style={[styles.filterChipText, activeFilter === 'all' && styles.filterChipTextActive]}>
+                All Generations
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setActiveFilter('paternal')}
+              style={[styles.filterChip, activeFilter === 'paternal' && styles.filterChipActive]}
+            >
+              <Text style={[styles.genderIcon, activeFilter === 'paternal' && styles.genderIconActive]}>♂</Text>
+              <Text style={[styles.filterChipText, activeFilter === 'paternal' && styles.filterChipTextActive]}>
+                Paternal Line
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setActiveFilter('maternal')}
+              style={[styles.filterChip, activeFilter === 'maternal' && styles.filterChipActive]}
+            >
+              <Text style={[styles.genderIcon, activeFilter === 'maternal' && styles.genderIconActive]}>♀</Text>
+              <Text style={[styles.filterChipText, activeFilter === 'maternal' && styles.filterChipTextActive]}>
+                Maternal Line
+              </Text>
+            </Pressable>
+
+            {/* Quick Profiles Switcher Pill */}
+            <Pressable
+              onPress={() => setTabView(tabView === 'tree' ? 'profiles' : 'tree')}
+              style={styles.filterChip}
+            >
+              <Ionicons name={tabView === 'tree' ? 'list-outline' : 'git-network-outline'} size={13} color="#5C4A3E" />
+              <Text style={styles.filterChipText}>
+                {tabView === 'tree' ? 'Profiles' : 'Diagram'}
+              </Text>
+            </Pressable>
+          </ScrollView>
         </View>
-        <Ionicons name="chevron-forward" size={14} color={colors.muted} />
-      </Pressable>
 
-      {/* 3. Horizontal Scrollable Tools Bar (Clean, no text collision) */}
-      <View style={styles.quickLaunchContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.quickLaunchScroll}
-        >
-          <Pressable onPress={() => router.push('/tree-builder')} style={[styles.quickLaunchPill, styles.quickLaunchHighlight]}>
-            <Ionicons name="mic-outline" size={14} color={colors.terra} />
-            <Text style={[styles.quickLaunchText, { color: colors.terra, fontWeight: '800' }]}>Voice Interview</Text>
-          </Pressable>
-
-          <Pressable onPress={() => router.push('/timeline')} style={styles.quickLaunchPill}>
-            <Ionicons name="time-outline" size={14} color={colors.ink} />
-            <Text style={styles.quickLaunchText}>Timeline</Text>
-          </Pressable>
-
-          <Pressable onPress={() => router.push('/review-suggestions')} style={styles.quickLaunchPill}>
-            <Ionicons name="shield-checkmark-outline" size={14} color={colors.ink} />
-            <Text style={styles.quickLaunchText}>Verify Facts</Text>
-          </Pressable>
-
-          <Pressable onPress={() => router.push('/documents')} style={styles.quickLaunchPill}>
-            <Ionicons name="document-text-outline" size={14} color={colors.ink} />
-            <Text style={styles.quickLaunchText}>OCR Docs</Text>
-          </Pressable>
-
-          <Pressable onPress={() => router.push('/gedcom')} style={styles.quickLaunchPill}>
-            <Ionicons name="git-branch-outline" size={14} color={colors.ink} />
-            <Text style={styles.quickLaunchText}>GEDCOM</Text>
-          </Pressable>
-        </ScrollView>
+        {/* 3. Jump-To Generation Navigation Row */}
+        {tabView === 'tree' ? (
+          <View style={styles.jumpRow}>
+            <Text style={styles.jumpLabel}>JUMP TO:</Text>
+            <Pressable onPress={() => visualizerRef.current?.jumpToGeneration(0)} style={styles.jumpBtn}>
+              <Text style={styles.jumpBtnText}>Gen 1 · 1920s</Text>
+            </Pressable>
+            <Pressable onPress={() => visualizerRef.current?.jumpToGeneration(1)} style={styles.jumpBtn}>
+              <Text style={styles.jumpBtnText}>Gen 2 · 1940s</Text>
+            </Pressable>
+            <Pressable onPress={() => visualizerRef.current?.jumpToGeneration(2)} style={styles.jumpBtn}>
+              <Text style={styles.jumpBtnText}>Gen 3 · 1970s</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
-      {/* 4. View Switcher */}
-      <View style={styles.switcher}>
-        <Pressable
-          onPress={() => setTabView('tree')}
-          style={[styles.switchOption, tabView === 'tree' && styles.switchOptionActive]}
-        >
-          <Ionicons name="git-network-outline" size={15} color={tabView === 'tree' ? colors.white : colors.ink} />
-          <Text style={[styles.switchText, tabView === 'tree' && styles.switchTextActive]}>
-            Tree Diagram ({people.length})
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setTabView('profiles')}
-          style={[styles.switchOption, tabView === 'profiles' && styles.switchOptionActive]}
-        >
-          <Ionicons name="list-outline" size={15} color={tabView === 'profiles' ? colors.white : colors.ink} />
-          <Text style={[styles.switchText, tabView === 'profiles' && styles.switchTextActive]}>
-            Profiles & Review
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* 5. Main Canvas / Profiles */}
+      {/* 4. Main Canvas / Profiles */}
       {tabView === 'tree' ? (
         <View style={styles.treeViewport}>
           <FamilyTreeVisualizer
+            ref={visualizerRef}
             people={people}
             relationships={relationships}
+            activeFilter={activeFilter}
+            onChangeFilter={setActiveFilter}
             onDeletePerson={handleDeletePerson}
             onRefresh={refresh}
           />
@@ -253,6 +255,128 @@ export default function FamilyScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Heirloom Archive Header Bar
+  heirloomHeader: {
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 8,
+    gap: 8
+  },
+  archiveCategoryText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: '#8B4513'
+  },
+  archiveTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8
+  },
+  archiveTitle: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '900',
+    fontFamily: 'serif',
+    color: '#2C221E'
+  },
+  headerRightIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F7EFE6',
+    borderWidth: 1,
+    borderColor: '#EBE2D7',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  headerProfileBtn: {
+    marginLeft: 2
+  },
+  headerProfileAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#5C2E17',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  headerProfileAvatarText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '800'
+  },
+
+  // Generational Lineage Filter Chips
+  filterChipRow: {
+    marginTop: 2
+  },
+  filterScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center'
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#F5ECE1',
+    borderWidth: 1,
+    borderColor: '#E8DBCF'
+  },
+  filterChipActive: {
+    backgroundColor: '#8B4513',
+    borderColor: '#6F340D'
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#5C4A3E'
+  },
+  filterChipTextActive: {
+    color: colors.white
+  },
+  genderIcon: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#5C4A3E'
+  },
+  genderIconActive: {
+    color: colors.white
+  },
+
+  // Jump-To Generation Navigation Row
+  jumpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 4
+  },
+  jumpLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    color: '#8B4513'
+  },
+  jumpBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: 4
+  },
+  jumpBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6E5D53'
+  },
+
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',

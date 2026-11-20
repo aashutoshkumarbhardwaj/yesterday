@@ -26,6 +26,7 @@ export interface FamilyTreeCanvasHandle {
   zoomIn: () => void;
   zoomOut: () => void;
   resetView: () => void;
+  scrollToY: (targetY: number) => void;
 }
 
 export const FamilyTreeCanvas = React.forwardRef<FamilyTreeCanvasHandle, FamilyTreeCanvasProps>(
@@ -115,6 +116,14 @@ export const FamilyTreeCanvas = React.forwardRef<FamilyTreeCanvasHandle, FamilyT
       });
     }, [scale, onZoomChange]);
 
+    const scrollToY = useCallback((targetY: number) => {
+      const currentS = currentScale.current;
+      const newPanY = screenHeight / 3 - targetY * currentS;
+      Animated.spring(panY, { toValue: newPanY, useNativeDriver: true, tension: 45, friction: 8 }).start(() => {
+        currentPanY.current = newPanY;
+      });
+    }, [screenHeight, panY]);
+
     const resetView = useCallback(() => {
       fitToScreen();
     }, [fitToScreen]);
@@ -125,8 +134,9 @@ export const FamilyTreeCanvas = React.forwardRef<FamilyTreeCanvasHandle, FamilyT
       fitToScreen,
       zoomIn,
       zoomOut,
-      resetView
-    }), [centerOnNode, fitToScreen, zoomIn, zoomOut, resetView]);
+      resetView,
+      scrollToY
+    }), [centerOnNode, fitToScreen, zoomIn, zoomOut, resetView, scrollToY]);
 
     useEffect(() => {
       fitToScreen();
