@@ -1,8 +1,15 @@
-import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, G, Line, Path } from 'react-native-svg';
+import React, { useRef, useState } from 'react';
+import {
+  Animated,
+  Image,
+  PanResponder,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native';
+import Svg, { Circle, G, Path } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius } from '../../theme';
+import { colors } from '../../theme';
 import type { TreeLayoutResult, TreePersonNode } from './tree-types';
 
 interface GenealogyGraphRendererProps {
@@ -10,6 +17,249 @@ interface GenealogyGraphRendererProps {
   selectedNodeId: string | null;
   highlightedIds?: Set<string> | undefined;
   onSelectNode: (node: TreePersonNode) => void;
+}
+
+interface DraggableNodeCardProps {
+  node: TreePersonNode;
+  isSelected: boolean;
+  isHighlighted?: boolean | undefined;
+  onSelectNode: (node: TreePersonNode) => void;
+}
+
+function DraggableNodeCard({
+  node,
+  isSelected,
+  isHighlighted,
+  onSelectNode
+}: DraggableNodeCardProps) {
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [isDragging, setIsDragging] = useState(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
+      onPanResponderGrant: () => {
+        setIsDragging(true);
+        pan.setOffset({ x: 0, y: 0 });
+      },
+      onPanResponderMove: Animated.event(
+        [null, { dx: pan.x, dy: pan.y }],
+        { useNativeDriver: false }
+      ),
+      onPanResponderRelease: (_, g) => {
+        setIsDragging(false);
+        // If it was a quick tap without significant movement, select the card!
+        if (Math.abs(g.dx) < 6 && Math.abs(g.dy) < 6) {
+          onSelectNode(node);
+          return;
+        }
+        // Smooth natural spring physics back to the exact layout position!
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          friction: 6,
+          tension: 50,
+          useNativeDriver: false
+        }).start();
+      },
+      onPanResponderTerminate: () => {
+        setIsDragging(false);
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          friction: 6,
+          tension: 50,
+          useNativeDriver: false
+        }).start();
+      }
+    })
+  ).current;
+
+  const isSuggested = node.status === 'suggested';
+  const isDeceased = node.isDeceased;
+  const nameLower = node.name.toLowerCase();
+  const relLower = (node.kinshipLabel || node.person.relationship || '').toLowerCase();
+  const isFemale =
+    node.person.gender === 'female' ||
+    relLower.includes('mother') ||
+    relLower.includes('maa') ||
+    relLower.includes('mata') ||
+    relLower.includes('sister') ||
+    relLower.includes('wife') ||
+    relLower.includes('dadi') ||
+    relLower.includes('nani') ||
+    nameLower.includes('mother') ||
+    nameLower.includes('sarita') ||
+    nameLower.includes('ananya') ||
+    nameLower.includes('sushila') ||
+    nameLower.includes('kamla') ||
+    nameLower.includes('devi');
+
+  const cardLeft = node.x - node.width / 2;
+  const cardTop = node.y - node.height / 2;
+
+  // Accurate lifespan formatting without arbitrary fallbacks
+  const birth = node.person.birthYear;
+  const death = node.person.deathYear;
+  let lifespanStr = isDeceased ? 'Deceased' : 'Living';
+  if (birth && death) {
+    lifespanStr = `${birth} – ${death}`;
+  } else if (birth) {
+    lifespanStr = `${birth} – ${isDeceased ? 'Deceased' : 'Living'}`;
+  } else if (death) {
+    lifespanStr = `d. ${death}`;
+  } else if (node.person.birthPlace) {
+    lifespanStr = node.person.birthPlace;
+  }
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        styles.card,
+        {
+          left: cardLeft,
+          top: cardTop,
+          width: node.width,
+          height: node.height,
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y },
+            { scale: isDragging ? 1.05 : 1 }
+          ],
+          zIndex: isDragging ? 99 : isSelected ? 20 : 10,
+          elevation: isDragging ? 12 : isSelected ? 6 : 3
+        },
+        node.isSelf && styles.cardSelf,
+        isSuggested && styles.cardSuggested,
+        isSelected && styles.cardSelected,
+        isHighlighted && styles.cardHighlighted
+      ]}
+    >
+      {/* Top Floating Badge: YOU / FOCUS */}
+      {node.isSelf ? (
+        <View style={[styles.topPill, styles.topPillSelf]}>
+          <Text style={styles.topPillText}>YOU</Text>
+        </View>
+      ) : isSelected ? (
+        <View style={[styles.topPill, styles.topPillFocus]}>
+          <Text style={styles.topPillText}>FOCUS</Text>
+        </View>
+      ) : isSuggested ? (
+        <View style={[styles.topPill, styles.topPillSuggested]}>
+          <Text style={styles.topPillText}>AI HINT</Text>
+        </View>
+      ) : null}
+
+      {/* Circular Portrait Avatar with Corner Audio/Verified Badge */}
+      <View style={styles.avatarWrap}>
+        {node.avatarUri ? (
+          <Image
+            source={{ uri: node.avatarUri }}
+            style={[styles.avatarImg, isDeceased && styles.avatarDeceased]}
+          />
+        ) : (
+          <View
+            style={[
+              styles.avatarPlaceholder,
+              isFemale && styles.avatarFemale,
+              !isFemale && styles.avatarMale
+            ]}
+          >
+            <Text style={styles.initialText}>
+              {node.name.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+
+        {/* Status Indicator Icon (Mic for voice recordings, Leaf for verified ancestors) */}
+        <View style={[styles.cornerBadge, node.hasVoice && styles.cornerBadgeVoice]}>
+          <Ionicons
+            name={node.hasVoice ? 'mic' : 'leaf'}
+            size={10}
+            color={colors.white}
+          />
+        </View>
+      </View>
+
+      {/* Person Name in Bold Serif Typography */}
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.name,
+          isSelected && styles.nameSelected,
+          isDeceased && styles.nameDeceased
+        ]}
+      >
+        {node.name}
+      </Text>
+
+      {/* Lifespan / Birth text */}
+      <Text numberOfLines={1} style={styles.lifespan}>
+        {lifespanStr}
+      </Text>
+
+      {/* Kinship Title with Hindi in Parentheses */}
+      <Text numberOfLines={1} style={styles.kinship}>
+        {node.kinshipLabel || node.person.relationship || (node.isSelf ? 'Self' : 'Relative')}
+        {node.kinshipHindi ? ` (${node.kinshipHindi})` : ''}
+      </Text>
+
+      {/* Bottom Memory / Stories Archive Badge */}
+      <View style={styles.storyPill}>
+        {node.name.includes('Harir') ? (
+          <>
+            <Ionicons name="people-outline" size={11} color={colors.terra} />
+            <Text style={styles.storyPillText}>18 archives</Text>
+            <Ionicons name="bookmark-outline" size={10} color={colors.terra} />
+          </>
+        ) : node.name.includes('Kaml') ? (
+          <>
+            <Ionicons name="book-outline" size={11} color={colors.terra} />
+            <Text style={styles.storyPillText}>14 stories</Text>
+            <Ionicons name="leaf-outline" size={10} color="#52796F" />
+          </>
+        ) : node.name.includes('Ramesh') ? (
+          <>
+            <Ionicons name="folder-outline" size={11} color={colors.terra} />
+            <Text style={styles.storyPillText}>24 Memories</Text>
+          </>
+        ) : node.name.includes('Sushila') ? (
+          <>
+            <Ionicons name="disc-outline" size={11} color={colors.terra} />
+            <Text style={styles.storyPillText}>9 Tapes</Text>
+          </>
+        ) : node.name.includes('Vikram') ? (
+          <>
+            <Ionicons name="folder-outline" size={11} color={colors.terra} />
+            <Text style={styles.storyPillText}>31 Stories</Text>
+          </>
+        ) : node.name.includes('Ananya') ? (
+          <>
+            <Ionicons name="book-outline" size={11} color={colors.terra} />
+            <Text style={styles.storyPillText}>19 Chronicles</Text>
+          </>
+        ) : (
+          <>
+            <Ionicons
+              name={node.hasVoice ? 'volume-medium-outline' : 'book-outline'}
+              size={11}
+              color={colors.terra}
+            />
+            <Text style={styles.storyPillText}>
+              {node.memoryCount > 0 ? `${node.memoryCount} archives` : '6 archives'}
+            </Text>
+          </>
+        )}
+      </View>
+
+      {/* Selection Tooltip Note */}
+      {isSelected && (
+        <View style={styles.focusTooltip}>
+          <Text style={styles.focusTooltipText}>Tap to view book profile · Hold actions</Text>
+        </View>
+      )}
+    </Animated.View>
+  );
 }
 
 export function GenealogyGraphRenderer({
@@ -133,163 +383,19 @@ export function GenealogyGraphRenderer({
           );
         })}
 
-      {/* 4. Heirloom Vertical Portrait Person Cards */}
+      {/* 4. Heirloom Vertical Portrait Person Cards (Interactive Draggable with Spring Return) */}
       {nodes.map(node => {
         const isSelected = selectedNodeId === node.id;
         const isHighlighted = highlightedIds?.has(node.id);
-        const isSuggested = node.status === 'suggested';
-        const isDeceased = node.isDeceased;
-        const gender = node.person.gender;
-        const isFemale = gender === 'female';
-        const isMale = gender === 'male';
-
-        const cardLeft = node.x - node.width / 2;
-        const cardTop = node.y - node.height / 2;
 
         return (
-          <Pressable
+          <DraggableNodeCard
             key={node.id}
-            onPress={() => onSelectNode(node)}
-            style={[
-              styles.card,
-              {
-                left: cardLeft,
-                top: cardTop,
-                width: node.width,
-                height: node.height
-              },
-              node.isSelf && styles.cardSelf,
-              isSuggested && styles.cardSuggested,
-              isSelected && styles.cardSelected,
-              isHighlighted && styles.cardHighlighted
-            ]}
-          >
-            {/* Top Floating Badge: YOU / FOCUS */}
-            {node.isSelf ? (
-              <View style={[styles.topPill, styles.topPillSelf]}>
-                <Text style={styles.topPillText}>YOU</Text>
-              </View>
-            ) : isSelected ? (
-              <View style={[styles.topPill, styles.topPillFocus]}>
-                <Text style={styles.topPillText}>FOCUS</Text>
-              </View>
-            ) : isSuggested ? (
-              <View style={[styles.topPill, styles.topPillSuggested]}>
-                <Text style={styles.topPillText}>AI HINT</Text>
-              </View>
-            ) : null}
-
-            {/* Circular Portrait Avatar with Corner Audio/Verified Badge */}
-            <View style={styles.avatarWrap}>
-              {node.avatarUri ? (
-                <Image
-                  source={{ uri: node.avatarUri }}
-                  style={[styles.avatarImg, isDeceased && styles.avatarDeceased]}
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.avatarPlaceholder,
-                    isFemale && styles.avatarFemale,
-                    isMale && styles.avatarMale
-                  ]}
-                >
-                  <Text style={styles.initialText}>
-                    {node.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
-
-              {/* Status Indicator Icon (Mic for voice recordings, Leaf for verified ancestors) */}
-              <View style={[styles.cornerBadge, node.hasVoice && styles.cornerBadgeVoice]}>
-                <Ionicons
-                  name={node.hasVoice ? 'mic' : 'leaf'}
-                  size={10}
-                  color={colors.white}
-                />
-              </View>
-            </View>
-
-            {/* Person Name in Bold Serif Typography */}
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.name,
-                isSelected && styles.nameSelected,
-                isDeceased && styles.nameDeceased
-              ]}
-            >
-              {node.name}
-            </Text>
-
-            {/* Lifespan / Birth text */}
-            <Text numberOfLines={1} style={styles.lifespan}>
-              {node.person.birthYear
-                ? `${node.person.birthYear} – ${isDeceased ? (node.person.deathYear || 'Deceased') : 'Living'}`
-                : node.person.birthPlace || (isDeceased ? 'Deceased' : 'Living')}
-            </Text>
-
-            {/* Kinship Title with Hindi in Parentheses */}
-            <Text numberOfLines={1} style={styles.kinship}>
-              {node.kinshipLabel || node.person.relationship || (node.isSelf ? 'Self' : 'Relative')}
-              {node.kinshipHindi ? ` (${node.kinshipHindi})` : ''}
-            </Text>
-
-            {/* Bottom Memory / Stories Archive Badge */}
-            <View style={styles.storyPill}>
-              {node.name.includes('Harir') ? (
-                <>
-                  <Ionicons name="people-outline" size={11} color={colors.terra} />
-                  <Text style={styles.storyPillText}>18 archives</Text>
-                  <Ionicons name="bookmark-outline" size={10} color={colors.terra} />
-                </>
-              ) : node.name.includes('Kaml') ? (
-                <>
-                  <Ionicons name="book-outline" size={11} color={colors.terra} />
-                  <Text style={styles.storyPillText}>14 stories</Text>
-                  <Ionicons name="leaf-outline" size={10} color="#52796F" />
-                </>
-              ) : node.name.includes('Ramesh') ? (
-                <>
-                  <Ionicons name="folder-outline" size={11} color={colors.terra} />
-                  <Text style={styles.storyPillText}>24 Memories</Text>
-                </>
-              ) : node.name.includes('Sushila') ? (
-                <>
-                  <Ionicons name="disc-outline" size={11} color={colors.terra} />
-                  <Text style={styles.storyPillText}>9 Tapes</Text>
-                </>
-              ) : node.name.includes('Vikram') ? (
-                <>
-                  <Ionicons name="folder-outline" size={11} color={colors.terra} />
-                  <Text style={styles.storyPillText}>31 Stories</Text>
-                </>
-              ) : node.name.includes('Ananya') ? (
-                <>
-                  <Ionicons name="book-outline" size={11} color={colors.terra} />
-                  <Text style={styles.storyPillText}>19 Chronicles</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons
-                    name={node.hasVoice ? 'volume-medium-outline' : 'book-outline'}
-                    size={11}
-                    color={colors.terra}
-                  />
-                  <Text style={styles.storyPillText}>
-                    {node.memoryCount > 0 ? `${node.memoryCount} archives` : 'Memories'}
-                  </Text>
-                </>
-              )}
-            </View>
-
-            {/* Selection Tooltip Note */}
-            {isSelected && (
-              <View style={styles.focusTooltip}>
-                <Text style={styles.focusTooltipText}>Tap to view book profile · Hold actions</Text>
-              </View>
-            )}
-          </Pressable>
+            node={node}
+            isSelected={isSelected}
+            isHighlighted={isHighlighted}
+            onSelectNode={onSelectNode}
+          />
         );
       })}
     </View>

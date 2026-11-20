@@ -84,3 +84,40 @@ test('FamilyTreeLayout: Visual distinction for AI-suggested relationships', () =
   assert.equal(suggestedBranch.strokeColor, '#D97706', 'Suggested branch must have amber stroke');
 });
 
+test('FamilyTreeLayout: Multiple mothers or multiple fathers kinship & non-overlapping orthogonal connectors', () => {
+  const people: Person[] = [
+    { id: 'f1', name: 'Anil Pandey', relationship: 'Father', createdAt: '' },
+    { id: 'm1', name: 'Mother', relationship: 'Mother', createdAt: '' },
+    { id: 'm2', name: 'Sarita Pandey', relationship: 'Mother', createdAt: '' },
+    { id: 'c1', name: 'Praveen Bhardwaj', relationship: 'Brother', createdAt: '' }
+  ];
+
+  const relationships: FamilyRelationship[] = [
+    { id: 'r1', personA: 'Anil Pandey', personB: 'Praveen Bhardwaj', relation: 'parent', status: 'confirmed' },
+    { id: 'r2', personA: 'Mother', personB: 'Praveen Bhardwaj', relation: 'parent', status: 'confirmed' },
+    { id: 'r3', personA: 'Sarita Pandey', personB: 'Praveen Bhardwaj', relation: 'parent', status: 'confirmed' }
+  ];
+
+  const res = computeFamilyTreeLayout(people, relationships, 'genealogy_graph');
+  assert.equal(res.nodes.length, 4);
+
+  const m1Node = res.nodes.find(n => n.name === 'Mother');
+  const m2Node = res.nodes.find(n => n.name === 'Sarita Pandey');
+  const f1Node = res.nodes.find(n => n.name === 'Anil Pandey');
+  const c1Node = res.nodes.find(n => n.name === 'Praveen Bhardwaj');
+
+  assert.ok(m1Node && m2Node && f1Node && c1Node);
+  // Verify Mother is strictly labeled as Mother (never Father!)
+  assert.equal(m1Node.kinshipLabel, 'Mother');
+  assert.equal(m1Node.kinshipHindi, 'माँ');
+  assert.equal(m2Node.kinshipLabel, 'Mother');
+  assert.equal(m2Node.kinshipHindi, 'माँ');
+  assert.equal(f1Node.kinshipLabel, 'Father');
+  assert.equal(f1Node.kinshipHindi, 'पिताजी');
+
+  // Verify orthogonal connectors exist and do not cut diagonally
+  const conn = res.genealogyConnectors.find(c => c.type === 'parent_child');
+  assert.ok(conn);
+  assert.ok(!conn.path.includes('NaN'));
+});
+

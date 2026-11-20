@@ -194,26 +194,6 @@ export const FamilyTreeVisualizer = React.forwardRef<FamilyTreeVisualizerHandle,
           onCanvasPress={() => setSelectedNodeId(null)}
         />
 
-        {/* Floating Viewport Controls Pad (Bottom Right) */}
-        <View style={styles.viewportPad}>
-          <Pressable onPress={handleFindMe} style={styles.findMeBtn}>
-            <Ionicons name="locate" size={14} color={colors.terra} />
-            <Text style={styles.findMeText}>Find Me</Text>
-          </Pressable>
-          <View style={styles.padDivider} />
-          <Pressable onPress={() => canvasRef.current?.zoomIn()} style={styles.padBtn}>
-            <Ionicons name="add" size={18} color={colors.ink} />
-          </Pressable>
-          <View style={styles.padDivider} />
-          <Pressable onPress={() => canvasRef.current?.zoomOut()} style={styles.padBtn}>
-            <Ionicons name="remove" size={18} color={colors.ink} />
-          </Pressable>
-          <View style={styles.padDivider} />
-          <Pressable onPress={() => canvasRef.current?.fitToScreen()} style={styles.padBtn}>
-            <Ionicons name="scan-outline" size={16} color={colors.ink} />
-          </Pressable>
-        </View>
-
         {/* Floating Archival Capsule Sheet (Selected Person) */}
         {selectedNode ? (
           <View style={styles.archivalCapsule}>
@@ -233,10 +213,15 @@ export const FamilyTreeVisualizer = React.forwardRef<FamilyTreeVisualizerHandle,
 
               <View style={styles.capsuleTextCol}>
                 <Text numberOfLines={1} style={styles.capsuleName}>
-                  {selectedNode.name} ({selectedNode.person.birthYear || '1948'}–{selectedNode.person.deathYear || (selectedNode.isDeceased ? '2015' : 'Living')})
+                  {selectedNode.name}{' '}
+                  {selectedNode.person.birthYear
+                    ? `(${selectedNode.person.birthYear}–${selectedNode.person.deathYear || (selectedNode.isDeceased ? 'Deceased' : 'Living')})`
+                    : selectedNode.isDeceased ? '(Deceased)' : '(Living)'}
                 </Text>
                 <Text numberOfLines={1} style={styles.capsuleExcerpt}>
-                  {selectedNode.person.notes ? `"${selectedNode.person.notes}"` : '"The 1971 Ganges crossing oral history..."'}
+                  {selectedNode.person.notes
+                    ? `"${selectedNode.person.notes}"`
+                    : `"${selectedNode.name} is preserved in this family archive."`}
                 </Text>
               </View>
 
@@ -333,59 +318,16 @@ const styles = StyleSheet.create({
     maxWidth: 320
   },
 
-  // Floating Viewport Control Pad (Right Side)
-  viewportPad: {
-    position: 'absolute',
-    right: 14,
-    bottom: 96,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#EBE2D7',
-    shadowColor: '#2C221E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 6,
-    zIndex: 25,
-    overflow: 'hidden'
-  },
-  findMeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF'
-  },
-  findMeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.ink
-  },
-  padBtn: {
-    width: 40,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF'
-  },
-  padDivider: {
-    height: 1,
-    backgroundColor: '#F0E7DD',
-    width: '100%'
-  },
-
   // Floating Archival Capsule (Bottom Selected Card)
   archivalCapsule: {
     position: 'absolute',
     left: 14,
-    right: 68,
+    right: 14,
     bottom: 50,
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: '#E8DFD5',
     shadowColor: '#2C221E',

@@ -190,11 +190,110 @@ export function computeFamilyTreeLayout(
   const spouseGap = mode === 'living_tree' ? SPOUSE_GAP_ORGANIC : SPOUSE_GAP_GRAPH;
   const cardW = mode === 'living_tree' ? MEDALLION_RADIUS * 2 : GRAPH_CARD_WIDTH;
 
-  function calculateKinshipLabel(p: Person): { label: string; hindi: string } {
-    if (anchor && p.id === anchor.id) return { label: 'Self', hindi: 'स्वयं' };
-    const rawLvl = levelMap.get(p.id) ?? 0;
-    const isFemale = p.gender === 'female';
+  function inferGender(p: Person): 'female' | 'male' | 'other' {
+    if (p.gender === 'female' || p.gender === 'male' || p.gender === 'other') return p.gender;
+    const name = (p.name || '').toLowerCase();
+    const rel = (p.relationship || '').toLowerCase();
 
+    const femaleKeywords = [
+      'mother', 'mom', 'maa', 'mata', 'ammi', 'dadi', 'nani', 'sister', 'didi', 'behan', 'wife', 'patni',
+      'daughter', 'beti', 'bua', 'mausi', 'chachi', 'mami', 'tai', 'bhabhi', 'female', 'mrs', 'devi', 'kumari', 'sarita', 'ananya', 'sushila', 'kamla'
+    ];
+    if (femaleKeywords.some(k => name.includes(k) || rel.includes(k))) {
+      return 'female';
+    }
+
+    const maleKeywords = [
+      'father', 'dad', 'papa', 'pitaji', 'abba', 'bapuji', 'dada', 'nana', 'brother', 'bhai', 'bhaiya',
+      'husband', 'pati', 'son', 'beta', 'chacha', 'mama', 'fufa', 'mausa', 'tau', 'male', 'mr', 'kumar', 'singh', 'anil', 'praveen', 'aashutosh', 'ramesh', 'hariram', 'vikram'
+    ];
+    if (maleKeywords.some(k => name.includes(k) || rel.includes(k))) {
+      return 'male';
+    }
+
+    return 'male';
+  }
+
+  function calculateKinshipLabel(p: Person): { label: string; hindi: string } {
+    const isExplicitSelf = Boolean(
+      (p.relationship ?? '').toLowerCase().includes('self') ||
+      ['me', 'self', 'narrator', 'i'].includes(p.name.toLowerCase().trim())
+    );
+    if (isExplicitSelf) return { label: 'Self', hindi: 'स्वयं' };
+
+    const gender = inferGender(p);
+    const isFemale = gender === 'female';
+    const explicitRel = (p.relationship ?? '').trim();
+
+    // 1. If explicit relationship is specified on the person, strictly respect it!
+    if (explicitRel && explicitRel.toLowerCase() !== 'relative' && explicitRel.toLowerCase() !== 'peer relative') {
+      const relLower = explicitRel.toLowerCase();
+      if (relLower.includes('step-mother') || relLower.includes('second mother')) {
+        return { label: explicitRel, hindi: 'माँ (सौतेली)' };
+      }
+      if (relLower.includes('adoptive mother')) {
+        return { label: explicitRel, hindi: 'दत्तक माँ' };
+      }
+      if (relLower.includes('mother') || relLower.includes('maa') || relLower.includes('mata')) {
+        return { label: 'Mother', hindi: 'माँ' };
+      }
+      if (relLower.includes('step-father') || relLower.includes('second father')) {
+        return { label: explicitRel, hindi: 'पिताजी (सौतेले)' };
+      }
+      if (relLower.includes('adoptive father')) {
+        return { label: explicitRel, hindi: 'दत्तक पिता' };
+      }
+      if (relLower.includes('father') || relLower.includes('pitaji') || relLower.includes('papa')) {
+        return { label: 'Father', hindi: 'पिताजी' };
+      }
+      if (relLower.includes('brother') || relLower.includes('bhai')) {
+        return { label: 'Brother', hindi: 'भाई' };
+      }
+      if (relLower.includes('sister') || relLower.includes('behan') || relLower.includes('didi')) {
+        return { label: 'Sister', hindi: 'बहन' };
+      }
+      if (relLower.includes('wife') || relLower.includes('patni')) {
+        return { label: 'Wife', hindi: 'पत्नी' };
+      }
+      if (relLower.includes('husband') || relLower.includes('pati')) {
+        return { label: 'Husband', hindi: 'पति' };
+      }
+      if (relLower.includes('son') || relLower.includes('beta')) {
+        return { label: 'Son', hindi: 'बेटा' };
+      }
+      if (relLower.includes('daughter') || relLower.includes('beti')) {
+        return { label: 'Daughter', hindi: 'बेटी' };
+      }
+      if (relLower.includes('dada')) {
+        return { label: 'Grandfather (Dada)', hindi: 'दादाजी' };
+      }
+      if (relLower.includes('dadi')) {
+        return { label: 'Grandmother (Dadi)', hindi: 'दादीजी' };
+      }
+      if (relLower.includes('nana')) {
+        return { label: 'Maternal Grandfather (Nana)', hindi: 'नानाजी' };
+      }
+      if (relLower.includes('nani')) {
+        return { label: 'Maternal Grandmother (Nani)', hindi: 'नानीजी' };
+      }
+      if (relLower.includes('grandfather')) {
+        return isFemale ? { label: 'Grandmother', hindi: 'दादीजी' } : { label: 'Grandfather', hindi: 'दादाजी' };
+      }
+      if (relLower.includes('grandmother')) {
+        return { label: 'Grandmother', hindi: 'दादीजी' };
+      }
+      if (relLower.includes('chacha')) return { label: 'Uncle (Chacha)', hindi: 'चाचाजी' };
+      if (relLower.includes('chachi')) return { label: 'Aunt (Chachi)', hindi: 'चाचीजी' };
+      if (relLower.includes('mama')) return { label: 'Uncle (Mama)', hindi: 'मामाजी' };
+      if (relLower.includes('mami')) return { label: 'Aunt (Mami)', hindi: 'मामीजी' };
+      if (relLower.includes('bua')) return { label: 'Aunt (Bua)', hindi: 'बुआजी' };
+      if (relLower.includes('mausi')) return { label: 'Aunt (Mausi)', hindi: 'मौसीजी' };
+
+      return { label: explicitRel, hindi: isFemale ? 'सम्बन्धी' : 'सम्बन्धी' };
+    }
+
+    // 2. Fallback based on generational distance relative to anchor
+    const rawLvl = levelMap.get(p.id) ?? 0;
     if (rawLvl === -1) {
       return isFemale ? { label: 'Mother', hindi: 'माँ' } : { label: 'Father', hindi: 'पिताजी' };
     }
@@ -215,7 +314,7 @@ export function computeFamilyTreeLayout(
       if (siblingsMap.get(anchor?.id || '')?.includes(p.id)) {
         return isFemale ? { label: 'Sister', hindi: 'बहन' } : { label: 'Brother', hindi: 'भाई' };
       }
-      return { label: p.relationship || 'Peer Relative', hindi: 'सहोदर/सम्बन्धी' };
+      return { label: 'Relative', hindi: 'सहोदर/सम्बन्धी' };
     }
     if (rawLvl === 1) {
       return isFemale ? { label: 'Daughter', hindi: 'बेटी' } : { label: 'Son', hindi: 'बेटा' };
@@ -223,7 +322,7 @@ export function computeFamilyTreeLayout(
     if (rawLvl === 2) {
       return isFemale ? { label: 'Granddaughter', hindi: 'पोती' } : { label: 'Grandson', hindi: 'पोता' };
     }
-    return { label: p.relationship || 'Relative', hindi: 'सम्बन्धी' };
+    return { label: 'Relative', hindi: 'सम्बन्धी' };
   }
 
   let maxCanvasX = 500;
@@ -455,6 +554,17 @@ export function computeFamilyTreeLayout(
       .filter(Boolean) as TreePersonNode[];
 
     if (childNodes.length > 0) {
+      // Collect all co-parents associated with this child set (supporting 2 mothers, 2 fathers, blended families)
+      const coParents = new Set<string>([parent.id]);
+      if (spouse) coParents.add(spouse.id);
+      for (const child of childNodes) {
+        for (const pId of parentsMap.get(child.id) || []) {
+          coParents.add(pId);
+        }
+      }
+      const coParentNodes = Array.from(coParents).map(id => nodeMap.get(id)).filter(Boolean) as TreePersonNode[];
+      for (const cp of coParentNodes) handledParentGroups.add(cp.id);
+
       const originX = spouse ? (parent.x + spouse.x) / 2 : parent.x;
       const originY = spouse
         ? (mode === 'living_tree' ? parent.y + 16 : parent.y)
@@ -503,22 +613,38 @@ export function computeFamilyTreeLayout(
           });
         }
       } else {
-        // Crisp genealogy orthogonal lines with smooth radius corners
-        const midY = originY + 28;
-        const minChildX = Math.min(...childNodes.map(c => c.x));
-        const maxChildX = Math.max(...childNodes.map(c => c.x));
+        // Clean genealogy orthogonal lines: zero card cuts, supports multiple mothers & fathers
+        const parentMaxBottomY = Math.max(...coParentNodes.map(p => p.y + GRAPH_CARD_HEIGHT / 2));
+        const midY = parentMaxBottomY + 28;
 
-        let pathStr = `M ${originX} ${originY} L ${originX} ${midY}`;
-        if (minChildX < maxChildX) {
-          pathStr += ` M ${minChildX} ${midY} L ${maxChildX} ${midY}`;
+        const allX = [
+          ...coParentNodes.map(p => p.x),
+          ...childNodes.map(c => c.x)
+        ];
+        const busMinX = Math.min(...allX);
+        const busMaxX = Math.max(...allX);
+
+        let pathStr = '';
+        // 1. Each parent drops vertically to the midY bus bar
+        for (const pNode of coParentNodes) {
+          const pBottomY = pNode.y + GRAPH_CARD_HEIGHT / 2;
+          pathStr += `M ${pNode.x} ${pBottomY} L ${pNode.x} ${midY} `;
         }
+
+        // 2. Horizontal bus bar spans cleanly between all parents and children
+        if (busMinX < busMaxX) {
+          pathStr += `M ${busMinX} ${midY} L ${busMaxX} ${midY} `;
+        }
+
+        // 3. Each child drops vertically into the top of their card
         for (const child of childNodes) {
-          pathStr += ` M ${child.x} ${midY} L ${child.x} ${child.y - GRAPH_CARD_HEIGHT / 2}`;
+          const childTopY = child.y - GRAPH_CARD_HEIGHT / 2;
+          pathStr += `M ${child.x} ${midY} L ${child.x} ${childTopY} `;
         }
 
         genealogyConnectors.push({
           id: `child-graph-${parent.id}`,
-          path: pathStr,
+          path: pathStr.trim(),
           type: 'parent_child',
           isSuggested,
           label: 'Child'
