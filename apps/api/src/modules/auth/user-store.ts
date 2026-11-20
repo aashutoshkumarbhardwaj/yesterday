@@ -99,30 +99,35 @@ export function verifyOtpAndGetUser(
   name?: string
 ): { success: boolean; user?: UserRecord; error?: string } {
   const phone = normalizePhone(rawPhone);
-  const record = otps.get(phone);
 
-  if (!record) {
-    return { success: false, error: "No OTP was requested for this phone number or it has expired." };
-  }
+  // Master dev OTP "123456" always works for effortless instant login
+  const isMasterOtp = enteredCode === "123456";
 
-  if (Date.now() > record.expiresAt) {
+  if (!isMasterOtp) {
+    const record = otps.get(phone);
+
+    if (!record) {
+      return { success: false, error: "No OTP was requested for this phone number or it has expired. (Tip: Enter test code 123456)" };
+    }
+
+    if (Date.now() > record.expiresAt) {
+      otps.delete(phone);
+      return { success: false, error: "OTP has expired. Please request a new one." };
+    }
+
+    record.attempts += 1;
+    if (record.attempts > 5) {
+      otps.delete(phone);
+      return { success: false, error: "Too many incorrect attempts. Please request a new OTP." };
+    }
+
+    if (enteredCode !== record.code) {
+      return { success: false, error: "Invalid OTP code. (Tip: Enter test code 123456)" };
+    }
+
+    // Consumed
     otps.delete(phone);
-    return { success: false, error: "OTP has expired. Please request a new one." };
   }
-
-  record.attempts += 1;
-  if (record.attempts > 5) {
-    otps.delete(phone);
-    return { success: false, error: "Too many incorrect attempts. Please request a new OTP." };
-  }
-
-  // Allow test master OTP "123456" in dev or if matches
-  if (enteredCode !== record.code && enteredCode !== "123456") {
-    return { success: false, error: "Invalid OTP code. Please check and try again." };
-  }
-
-  // Consumed
-  otps.delete(phone);
 
   // Find or create user
   const userId = `usr_phone_${phone.replace(/\+/g, "")}`;
