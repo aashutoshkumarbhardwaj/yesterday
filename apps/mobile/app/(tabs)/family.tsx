@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Screen } from '../../src/components/Screen';
@@ -63,93 +63,83 @@ export default function FamilyScreen() {
 
   return (
     <Screen scroll={tabView !== 'tree'}>
+      {/* 1. Header Bar */}
       <View style={styles.topRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Family Tree</Text>
           <Text style={styles.subtitle}>A growing map of your ancestors and loved ones.</Text>
         </View>
-        <Pressable onPress={() => router.push('/login')} style={styles.profileBadge}>
-          {user ? (
-            <View style={styles.profileAvatar}>
-              <Text style={styles.profileAvatarText}>{user.name.charAt(0).toUpperCase()}</Text>
-            </View>
-          ) : (
-            <View style={styles.loginPill}>
-              <Ionicons name="person-circle-outline" size={16} color={colors.terra} />
-              <Text style={styles.loginPillText}>Sign In</Text>
-            </View>
-          )}
-        </Pressable>
+
+        <View style={styles.headerRightActions}>
+          <Pressable onPress={() => router.push('/tree-builder')} style={styles.interviewPillBtn}>
+            <Ionicons name="sparkles" size={13} color={colors.white} />
+            <Text style={styles.interviewPillText}>AI Interview</Text>
+          </Pressable>
+
+          <Pressable onPress={() => router.push('/login')} style={styles.profileBadge}>
+            {user ? (
+              <View style={styles.profileAvatar}>
+                <Text style={styles.profileAvatarText}>{user.name.charAt(0).toUpperCase()}</Text>
+              </View>
+            ) : (
+              <View style={styles.loginPill}>
+                <Ionicons name="person-circle-outline" size={15} color={colors.terra} />
+                <Text style={styles.loginPillText}>Sign In</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
       </View>
 
-      {/* Cloud Collaboration Banner */}
-      <Pressable onPress={() => router.push('/family-share')} style={styles.cloudBanner}>
+      {/* 2. Compact Cloud Collaboration Strip */}
+      <Pressable onPress={() => router.push('/family-share')} style={styles.cloudStrip}>
         <View style={styles.cloudLeft}>
           <View style={[styles.cloudDot, cloudSession?.membershipStatus === 'active' && styles.cloudDotActive]} />
-          <View style={{ flex: 1, gap: 1 }}>
-            <Text style={styles.cloudTitle}>
-              {cloudSession ? `${cloudSession.familyName} (${cloudSession.inviteCode})` : 'Share & Collaborate on Tree'}
-            </Text>
-            <Text style={styles.cloudSubtitle}>
-              {cloudSession
-                ? `Role: ${cloudSession.userRole.toUpperCase()} · ${cloudSession.membershipStatus === 'pending' ? 'Pending Approval' : 'Auto-Sync Active'}`
-                : 'Invite family members with a code to view & edit together'}
-            </Text>
-          </View>
+          <Text style={styles.cloudTitle} numberOfLines={1}>
+            {cloudSession ? `${cloudSession.familyName} (${cloudSession.inviteCode})` : 'Private Family Archive'}
+          </Text>
+          <Text style={styles.cloudSubtitle}>
+            {cloudSession ? `· ${cloudSession.userRole.toUpperCase()}` : '· Tap to invite family'}
+          </Text>
         </View>
-        <View style={styles.cloudBtn}>
-          <Ionicons name="people-outline" size={13} color={colors.terra} />
-          <Text style={styles.cloudBtnText}>{cloudSession ? 'Manage' : 'Share'}</Text>
-        </View>
+        <Ionicons name="chevron-forward" size={14} color={colors.muted} />
       </Pressable>
 
-      {/* Oral-history Agent Callout */}
-      <View style={styles.agentCard}>
-        <View style={styles.agentCardLeft}>
-          <View style={styles.agentIconWrap}>
-            <Ionicons name="sparkles" size={20} color={colors.terra} />
-            <Ionicons name="mic-outline" size={20} color={colors.terra} />
-          </View>
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text style={styles.agentTitle}>Talk with Family Historian</Text>
-            <Text style={styles.agentTitle}>Oral History Interviewer</Text>
-            <Text style={styles.agentCopy}>
-              Build your tree naturally through conversation. Speak or type your memories.
-              Document your elders' memories and relatives naturally by speaking aloud or typing.
-            </Text>
-          </View>
-        </View>
-        <Pressable onPress={() => router.push('/tree-builder')} style={styles.agentBtn}>
-          <Ionicons name="chatbubbles" size={16} color={colors.white} />
-          <Ionicons name="chatbubbles-outline" size={16} color={colors.white} />
-          <Text style={styles.agentBtnText}>Start Interview</Text>
-        </Pressable>
+      {/* 3. Horizontal Scrollable Tools Bar (Clean, no text collision) */}
+      <View style={styles.quickLaunchContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.quickLaunchScroll}
+        >
+          <Pressable onPress={() => router.push('/tree-builder')} style={[styles.quickLaunchPill, styles.quickLaunchHighlight]}>
+            <Ionicons name="mic-outline" size={14} color={colors.terra} />
+            <Text style={[styles.quickLaunchText, { color: colors.terra, fontWeight: '800' }]}>Voice Interview</Text>
+          </Pressable>
+
+          <Pressable onPress={() => router.push('/timeline')} style={styles.quickLaunchPill}>
+            <Ionicons name="time-outline" size={14} color={colors.ink} />
+            <Text style={styles.quickLaunchText}>Timeline</Text>
+          </Pressable>
+
+          <Pressable onPress={() => router.push('/review-suggestions')} style={styles.quickLaunchPill}>
+            <Ionicons name="shield-checkmark-outline" size={14} color={colors.ink} />
+            <Text style={styles.quickLaunchText}>Verify Facts</Text>
+          </Pressable>
+
+          <Pressable onPress={() => router.push('/documents')} style={styles.quickLaunchPill}>
+            <Ionicons name="document-text-outline" size={14} color={colors.ink} />
+            <Text style={styles.quickLaunchText}>OCR Docs</Text>
+          </Pressable>
+
+          <Pressable onPress={() => router.push('/gedcom')} style={styles.quickLaunchPill}>
+            <Ionicons name="git-branch-outline" size={14} color={colors.ink} />
+            <Text style={styles.quickLaunchText}>GEDCOM</Text>
+          </Pressable>
+        </ScrollView>
       </View>
 
-      {/* Quick Launch Tools Bar */}
-      <View style={styles.quickLaunchRow}>
-        <Pressable onPress={() => router.push('/timeline')} style={styles.quickLaunchPill}>
-          <Ionicons name="time-outline" size={14} color={colors.terra} />
-          <Text style={styles.quickLaunchText}>Timeline</Text>
-        </Pressable>
-        <Pressable onPress={() => router.push('/review-suggestions')} style={styles.quickLaunchPill}>
-          <Ionicons name="shield-checkmark-outline" size={14} color={colors.terra} />
-          <Text style={styles.quickLaunchText}>Verify Facts</Text>
-          <Text style={styles.quickLaunchText}>Fact Review</Text>
-        </Pressable>
-        <Pressable onPress={() => router.push('/documents')} style={styles.quickLaunchPill}>
-          <Ionicons name="document-text-outline" size={14} color={colors.terra} />
-          <Text style={styles.quickLaunchText}>OCR Docs</Text>
-          <Text style={styles.quickLaunchText}>Documents</Text>
-        </Pressable>
-        <Pressable onPress={() => router.push('/gedcom')} style={styles.quickLaunchPill}>
-          <Ionicons name="git-branch-outline" size={14} color={colors.terra} />
-          <Text style={styles.quickLaunchText}>GEDCOM</Text>
-          <Text style={styles.quickLaunchText}>Genealogy</Text>
-        </Pressable>
-      </View>
-
-      {/* View Switcher */}
+      {/* 4. View Switcher */}
       <View style={styles.switcher}>
         <Pressable
           onPress={() => setTabView('tree')}
@@ -171,13 +161,16 @@ export default function FamilyScreen() {
         </Pressable>
       </View>
 
+      {/* 5. Main Canvas / Profiles */}
       {tabView === 'tree' ? (
-        <FamilyTreeVisualizer
-          people={people}
-          relationships={relationships}
-          onDeletePerson={handleDeletePerson}
-          onRefresh={refresh}
-        />
+        <View style={styles.treeViewport}>
+          <FamilyTreeVisualizer
+            people={people}
+            relationships={relationships}
+            onDeletePerson={handleDeletePerson}
+            onRefresh={refresh}
+          />
+        </View>
       ) : (
         <View style={styles.profilesWrap}>
           <Text style={styles.section}>PEOPLE IN ARCHIVE · {people.length}</Text>
@@ -185,7 +178,6 @@ export default function FamilyScreen() {
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>Your family tree is waiting</Text>
               <Text style={styles.emptyCopy}>
-                Talk to the Historian Agent or save memories mentioning relatives to build their profiles here.
                 Start an interview or preserve memories mentioning relatives to build their profiles here.
               </Text>
             </View>
@@ -265,15 +257,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6
+    marginBottom: 8
+  },
+  title: {
+    color: colors.ink,
+    fontSize: 26,
+    fontWeight: '800'
+  },
+  subtitle: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: -2
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  interviewPillBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.terra,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 999
+  },
+  interviewPillText: {
+    color: colors.white,
+    fontWeight: '800',
+    fontSize: 11
   },
   profileBadge: {
-    marginLeft: 8
+    marginLeft: 2
   },
   profileAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.terra,
     alignItems: 'center',
     justifyContent: 'center'
@@ -281,17 +302,17 @@ const styles = StyleSheet.create({
   profileAvatarText: {
     color: colors.white,
     fontWeight: '800',
-    fontSize: 16
+    fontSize: 14
   },
   loginPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
     backgroundColor: colors.surfaceWarm,
     borderWidth: 1,
     borderColor: '#EBDCCE',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
     borderRadius: 999
   },
   loginPillText: {
@@ -299,29 +320,27 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 11
   },
-  title: { color: colors.ink, fontSize: 31, fontWeight: '800' },
-  subtitle: { color: colors.muted, fontSize: 13, marginTop: -4 },
-  cloudBanner: {
+  cloudStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.surfaceWarm,
     borderRadius: radius.md,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: '#EBDCCE',
-    marginTop: 4
+    marginBottom: 10
   },
   cloudLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
+    gap: 8,
     flex: 1
   },
   cloudDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
     backgroundColor: colors.muted
   },
@@ -330,84 +349,46 @@ const styles = StyleSheet.create({
   },
   cloudTitle: {
     color: colors.ink,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800'
   },
   cloudSubtitle: {
     color: colors.muted,
     fontSize: 11
   },
-  cloudBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.card,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border
+  quickLaunchContainer: {
+    marginBottom: 10
   },
-  cloudBtnText: {
-    color: colors.terra,
-    fontSize: 11,
-    fontWeight: '800'
-  },
-  agentCard: {
-    backgroundColor: '#F2E7D9',
-    padding: 16,
-    borderRadius: radius.lg,
-    gap: 12,
-    marginVertical: 10
-  },
-  agentCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  agentIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  agentTitle: { color: colors.ink, fontWeight: '800', fontSize: 15 },
-  agentCopy: { color: colors.muted, fontSize: 12, lineHeight: 17 },
-  agentBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  quickLaunchScroll: {
     gap: 8,
-    backgroundColor: colors.terra,
-    paddingVertical: 11,
-    borderRadius: 999
-  },
-  agentBtnText: { color: colors.white, fontWeight: '800', fontSize: 13 },
-  quickLaunchRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-    flexWrap: 'wrap'
+    paddingRight: 10
   },
   quickLaunchPill: {
-    flex: 1,
-    minWidth: 70,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
+    gap: 6,
     backgroundColor: colors.card,
     borderRadius: radius.md,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: colors.border
   },
-  quickLaunchText: { fontSize: 11, fontWeight: '700', color: colors.ink },
+  quickLaunchHighlight: {
+    backgroundColor: '#FAF2E9',
+    borderColor: '#ECD9C6'
+  },
+  quickLaunchText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.ink
+  },
   switcher: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     padding: 3,
-    marginBottom: 12
+    marginBottom: 8
   },
   switchOption: {
     flex: 1,
@@ -415,14 +396,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: radius.md - 2
   },
-  switchOptionActive: { backgroundColor: colors.terra },
-  switchText: { color: colors.ink, fontSize: 12, fontWeight: '700' },
-  switchTextActive: { color: colors.white },
-  profilesWrap: { gap: 12 },
-  section: { color: colors.muted, fontSize: 10, letterSpacing: 1.3, fontWeight: '800' },
+  switchOptionActive: {
+    backgroundColor: colors.terra
+  },
+  switchText: {
+    color: colors.ink,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  switchTextActive: {
+    color: colors.white
+  },
+  treeViewport: {
+    flex: 1,
+    minHeight: 520
+  },
+  profilesWrap: {
+    gap: 12,
+    paddingBottom: 40
+  },
+  section: {
+    color: colors.muted,
+    fontSize: 10,
+    letterSpacing: 1.3,
+    fontWeight: '800'
+  },
   empty: {
     padding: 24,
     borderRadius: radius.md,
@@ -430,9 +431,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8
   },
-  emptyTitle: { color: colors.ink, fontWeight: '800', fontSize: 16 },
-  emptyCopy: { color: colors.muted, textAlign: 'center', lineHeight: 20, fontSize: 12 },
-  list: { gap: 10 },
+  emptyTitle: {
+    color: colors.ink,
+    fontWeight: '800',
+    fontSize: 16
+  },
+  emptyCopy: {
+    color: colors.muted,
+    textAlign: 'center',
+    lineHeight: 20,
+    fontSize: 12
+  },
+  list: {
+    gap: 10
+  },
   person: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -451,20 +463,88 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
-  initial: { color: colors.terra, fontSize: 19, fontWeight: '800' },
-  name: { color: colors.ink, fontWeight: '800', fontSize: 15 },
-  relation: { color: colors.terra, fontSize: 12, fontWeight: '700' },
-  metaYear: { color: colors.muted, fontSize: 11 },
-  notes: { color: colors.muted, fontSize: 11, lineHeight: 16 },
-  status: { color: colors.muted, fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 5 },
-  confirm: { backgroundColor: colors.green, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
-  confirmText: { color: colors.white, fontSize: 10, fontWeight: '800' },
-  reject: { backgroundColor: colors.surfaceWarm, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
-  rejectText: { color: colors.terra, fontSize: 10, fontWeight: '800' },
-  delIcon: { padding: 6 },
-  relations: { gap: 8, backgroundColor: colors.surface, padding: 14, borderRadius: radius.md, marginTop: 10 },
-  relationTitle: { color: colors.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  edge: { paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 4 },
-  edgeText: { color: colors.ink, fontSize: 13, fontWeight: '700' }
+  initial: {
+    color: colors.terra,
+    fontSize: 19,
+    fontWeight: '800'
+  },
+  name: {
+    color: colors.ink,
+    fontWeight: '800',
+    fontSize: 15
+  },
+  relation: {
+    color: colors.terra,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  metaYear: {
+    color: colors.muted,
+    fontSize: 11
+  },
+  notes: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 16
+  },
+  status: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 5
+  },
+  confirm: {
+    backgroundColor: colors.green,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999
+  },
+  confirmText: {
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: '800'
+  },
+  reject: {
+    backgroundColor: colors.surfaceWarm,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999
+  },
+  rejectText: {
+    color: colors.terra,
+    fontSize: 10,
+    fontWeight: '800'
+  },
+  delIcon: {
+    padding: 6
+  },
+  relations: {
+    gap: 8,
+    backgroundColor: colors.surface,
+    padding: 14,
+    borderRadius: radius.md,
+    marginTop: 10
+  },
+  relationTitle: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1
+  },
+  edge: {
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: 4
+  },
+  edgeText: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: '700'
+  }
 });
