@@ -36,7 +36,7 @@
     },
     "android": {
       "permissions": [
-        "RECORD_AUDIO""RECORD_AUDIO",
+        "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
         "INTERNET",
         "ACCESS_NETWORK_STATE"
