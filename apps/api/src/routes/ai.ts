@@ -129,16 +129,31 @@ export async function registerAiRoutes(app: FastifyInstance) {
   });
 
   app.post("/v1/ai/understand-image", async (request, reply) => {
-    const file = await request.file();
-    if (!file) return reply.code(400).send({ error: "IMAGE_FILE_REQUIRED" });
-    if (!file.mimetype.startsWith("image/")) return reply.code(415).send({ error: "UNSUPPORTED_MEDIA_TYPE" });
-    const bytes = await file.toBuffer();
-    if (!bytes.length) return reply.code(400).send({ error: "EMPTY_IMAGE_FILE" });
+    let bytes: Buffer | null = null;
+    let mimeType = "image/jpeg";
+    let familyContext: string | undefined = undefined;
+
+    const contentType = request.headers["content-type"] || "";
+    if (contentType.includes("application/json")) {
+      const body = request.body as { imageBase64?: string; mimeType?: string; familyContext?: string };
+      if (!body.imageBase64) return reply.code(400).send({ error: "IMAGE_BASE64_REQUIRED" });
+      bytes = Buffer.from(body.imageBase64, "base64");
+      if (body.mimeType) mimeType = body.mimeType;
+      familyContext = body.familyContext;
+    } else {
+      const file = await request.file();
+      if (!file) return reply.code(400).send({ error: "IMAGE_FILE_REQUIRED" });
+      if (!file.mimetype.startsWith("image/")) return reply.code(415).send({ error: "UNSUPPORTED_MEDIA_TYPE" });
+      bytes = await file.toBuffer();
+      mimeType = file.mimetype;
+      const fields = (file.fields || {}) as Record<string, any>;
+      familyContext = typeof fields.familyContext?.value === "string" ? fields.familyContext.value.slice(0, 5000) : undefined;
+    }
+
+    if (!bytes || !bytes.length) return reply.code(400).send({ error: "EMPTY_IMAGE_FILE" });
     if (bytes.length > config.maxUploadBytes) return reply.code(413).send({ error: "FILE_TOO_LARGE", maxBytes: config.maxUploadBytes });
-    const fields = file.fields as Record<string, any>;
-    const familyContext = typeof fields.familyContext?.value === "string" ? fields.familyContext.value.slice(0, 5000) : undefined;
     try {
-      return await understandImage({ bytes, mimeType: file.mimetype, ...(familyContext ? { familyContext } : {}) });
+      return await understandImage({ bytes, mimeType, ...(familyContext ? { familyContext } : {}) });
     } catch (error) {
       request.log.error(error);
       return reply.code(502).send({ error: "IMAGE_ANALYSIS_FAILED", message: error instanceof Error ? error.message : "Provider error" });

@@ -73,11 +73,27 @@ export async function transcribeAudio(uri: string, filename = "family-recording.
 }
 
 export async function understandImage(uri: string, familyContext?: string, mimeType = "image/jpeg", filename = "family-photo.jpg") {
-  const form = new FormData();
   const cleanUri = Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('content://')
     ? `file://${uri}`
     : uri;
 
+  // 1. Try Base64 JSON first (reliable across all Expo versions)
+  try {
+    const base64Image = await FileSystem.readAsStringAsync(cleanUri, { encoding: 'base64' as any });
+    if (base64Image) {
+      const response = await fetch(`${getServerUrl()}/v1/ai/understand-image`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers() },
+        body: JSON.stringify({ imageBase64: base64Image, mimeType, familyContext, filename })
+      });
+      return await parseResponse<ImageUnderstanding>(response);
+    }
+  } catch (base64Err) {
+    console.warn("Base64 image upload attempt error, falling back to FormData:", base64Err);
+  }
+
+  // 2. FormData fallback
+  const form = new FormData();
   form.append("file", { uri: cleanUri, name: filename, type: mimeType } as unknown as Blob);
   if (familyContext) form.append("familyContext", familyContext);
   const response = await fetch(`${getServerUrl()}/v1/ai/understand-image`, {
