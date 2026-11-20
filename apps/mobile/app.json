@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Yesterday",
+    "slug": "yesterday",
+    "scheme": "yesterday",
+    "version": "0.4.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "platforms": ["ios", "android"],
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Yesterday needs microphone access so your family can preserve their stories."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Yesterday uses your selected photographs to preserve family memories.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-sqlite"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Yesterday uses your microphone to record family stories."
+      }
+    },
+    "android": {
+      "permissions": [
+        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "usesCleartextTraffic": true,
+      "package": "com.yesterday.family"
+    }
+  }
+}
