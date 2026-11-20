@@ -109,3 +109,21 @@ export async function answerFromArchive(input: { question: string; context: { pe
   if (!text) throw new Error('Gemini returned no archive answer.');
   return JSON.parse(text) as { answer: string; citations: { title: string; excerpt: string; createdAt: string }[]; notFound: boolean };
 }
+
+export async function transcribeAudioWithGemini(input: { bytes: Buffer; mimeType?: string }): Promise<string> {
+  const prompt = "Transcribe the following speech accurately word for word. Output ONLY the transcription text. Do not add any preamble, conversational commentary, or notes. If speech is in Hindi, Indian English, or code-mixed, preserve the words as spoken.";
+  let mimeType = input.mimeType || "audio/mp4";
+  if (mimeType === "audio/m4a" || mimeType === "audio/x-m4a") mimeType = "audio/mp4";
+
+  const payload = await geminiRequest(config.geminiModel, "generateContent", {
+    contents: [{
+      parts: [
+        { inlineData: { mimeType, data: input.bytes.toString("base64") } },
+        { text: prompt }
+      ]
+    }],
+    generationConfig: { temperature: 0.1 }
+  });
+  return responseText(payload);
+}
+

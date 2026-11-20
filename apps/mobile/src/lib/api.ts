@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { getServerUrl } from './sync-client';
 
 const API_TOKEN = process.env.EXPO_PUBLIC_API_TOKEN;
@@ -30,12 +31,38 @@ export interface StoryDraft {
 }
 
 export async function transcribeAudio(uri: string, filename = "family-recording.m4a") {
-  const form = new FormData();
   const cleanUri = Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('content://')
     ? `file://${uri}`
     : uri;
 
-  form.append("file", { uri: cleanUri, name: filename, type: "audio/m4a" } as unknown as Blob);
+  // 1. Preferred rock-solid Base64 JSON upload (bypasses Android OkHttp FormData parsing issues)
+  try {
+    const base64Audio = await FileSystem.readAsStringAsync(cleanUri, {
+      encoding: 'base64' as any
+    });
+    if (base64Audio) {
+      const response = await fetch(`${getServerUrl()}/v1/ai/transcribe`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...headers()
+        },
+        body: JSON.stringify({
+          audioBase64: base64Audio,
+          filename,
+          mimeType: "audio/mp4",
+          mode: "codemix"
+        })
+      });
+      return await parseResponse<{ transcript: string; languageCode?: string | null; note: string }>(response);
+    }
+  } catch (base64Err) {
+    console.warn("Base64 audio upload attempt error, falling back to FormData:", base64Err);
+  }
+
+  // 2. FormData fallback
+  const form = new FormData();
+  form.append("file", { uri: cleanUri, name: filename, type: "audio/mp4" } as unknown as Blob);
   form.append("mode", "codemix");
   const response = await fetch(`${getServerUrl()}/v1/ai/transcribe`, {
     method: "POST",

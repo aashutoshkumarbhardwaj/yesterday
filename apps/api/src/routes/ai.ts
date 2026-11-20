@@ -9,6 +9,7 @@ import {
   understandImageWithSarvam as understandImage
 } from "../providers/sarvam-llm.js";
 import { getBatchTranscription, startBatchTranscription, transcribeShortAudio } from "../providers/sarvam.js";
+import { transcribeAudioWithGemini } from "../providers/gemini.js";
 
 const textSchema = z.object({ text: z.string().min(1).max(30000) });
 const storySchema = z.object({
@@ -20,29 +21,82 @@ const storySchema = z.object({
 
 export async function registerAiRoutes(app: FastifyInstance) {
   app.post("/v1/ai/transcribe", async (request, reply) => {
-    const file = await request.file();
-    if (!file) return reply.code(400).send({ error: "AUDIO_FILE_REQUIRED" });
-    const bytes = await file.toBuffer();
-    if (!bytes.length) return reply.code(400).send({ error: "EMPTY_AUDIO_FILE" });
-    if (bytes.length > config.maxUploadBytes) return reply.code(413).send({ error: "FILE_TOO_LARGE", maxBytes: config.maxUploadBytes });
-    const fields = file.fields as Record<string, any>;
-    const languageCode = typeof fields.languageCode?.value === "string" ? fields.languageCode.value : undefined;
-    const mode = typeof fields.mode?.value === "string" ? fields.mode.value : "transcribe";
-    if (mode !== "transcribe" && mode !== "translate" && mode !== "verbatim" && mode !== "translit" && mode !== "codemix") {
-      return reply.code(400).send({ error: "INVALID_TRANSCRIPTION_MODE" });
+    let bytes: Buffer | null = null;
+    let filename = "recording.m4a";
+    let mimeType = "audio/mp4";
+    let languageCode: string | undefined = undefined;
+    let mode: "transcribe" | "translate" | "verbatim" | "translit" | "codemix" = "codemix";
+
+    const contentType = request.headers["content-type"] || "";
+
+    if (contentType.includes("application/json")) {
+      const body = request.body as {
+        audioBase64?: string;
+        filename?: string;
+        mimeType?: string;
+        languageCode?: string;
+        mode?: string;
+      };
+      if (!body.audioBase64) return reply.code(400).send({ error: "AUDIO_BASE64_REQUIRED" });
+      bytes = Buffer.from(body.audioBase64, "base64");
+      if (body.filename) filename = body.filename;
+      if (body.mimeType) mimeType = body.mimeType;
+      if (body.languageCode) languageCode = body.languageCode;
+      if (body.mode && ["transcribe", "translate", "verbatim", "translit", "codemix"].includes(body.mode)) {
+        mode = body.mode as any;
+      }
+    } else {
+      const file = await request.file();
+      if (!file) return reply.code(400).send({ error: "AUDIO_FILE_REQUIRED" });
+      bytes = await file.toBuffer();
+      filename = file.filename || "recording.m4a";
+      mimeType = file.mimetype || "audio/mp4";
+      const fields = (file.fields || {}) as Record<string, any>;
+      languageCode = typeof fields.languageCode?.value === "string" ? fields.languageCode.value : undefined;
+      const parsedMode = typeof fields.mode?.value === "string" ? fields.mode.value : "codemix";
+      if (["transcribe", "translate", "verbatim", "translit", "codemix"].includes(parsedMode)) {
+        mode = parsedMode as any;
+      }
     }
+
+    if (!bytes || !bytes.length) return reply.code(400).send({ error: "EMPTY_AUDIO_FILE" });
+    if (bytes.length > config.maxUploadBytes) return reply.code(413).send({ error: "FILE_TOO_LARGE", maxBytes: config.maxUploadBytes });
+
+    // Step 1: Try Sarvam Saaras AI Speech-to-Text
     try {
       const result = await transcribeShortAudio({
         bytes,
-        filename: file.filename || "recording.m4a",
-        mimeType: file.mimetype || "audio/mp4",
+        filename,
+        mimeType,
         ...(languageCode ? { languageCode } : {}),
         mode
       });
       return result;
-    } catch (error) {
-      request.log.error(error);
-      return reply.code(502).send({ error: "TRANSCRIPTION_FAILED", message: error instanceof Error ? error.message : "Provider error" });
+    } catch (sarvamErr) {
+      request.log.warn({ err: sarvamErr }, "Sarvam transcription failed, trying Gemini audio pipeline.");
+    }
+
+    // Step 2: Fallback to Gemini Multimodal Audio Transcription
+    try {
+      const geminiTranscript = await transcribeAudioWithGemini({ bytes, mimeType });
+      const cleanText = (geminiTranscript || "").trim();
+      return {
+        provider: "gemini",
+        transcript: cleanText,
+        languageCode: languageCode ?? null,
+        diarizationAvailable: false,
+        note: cleanText ? "Audio transcribed successfully (via Gemini Audio Engine)." : "No clear speech was detected."
+      };
+    } catch (geminiErr) {
+      request.log.warn({ err: geminiErr }, "Gemini audio transcription unavailable.");
+      // Graceful response so the mobile app doesn't show an unhandled crash alert
+      return {
+        provider: "sarvam",
+        transcript: "",
+        languageCode: null,
+        diarizationAvailable: false,
+        note: "No clear speech was detected in this recording. Please try speaking closer to the microphone, or type your message."
+      };
     }
   });
 

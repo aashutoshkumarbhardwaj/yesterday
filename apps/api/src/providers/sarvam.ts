@@ -33,15 +33,20 @@ export async function transcribeShortAudio(input: {
   mode?: "transcribe" | "translate" | "verbatim" | "translit" | "codemix";
 }): Promise<TranscriptResult> {
   const form = new FormData();
-  form.append("file", new Blob([new Uint8Array(input.bytes)], { type: input.mimeType }), input.filename);
+  let mimeType = input.mimeType || "audio/mp4";
+  if (mimeType === "audio/m4a" || mimeType === "audio/x-m4a") mimeType = "audio/mp4";
+  form.append("file", new Blob([new Uint8Array(input.bytes)], { type: mimeType }), input.filename.endsWith(".m4a") ? input.filename : `${input.filename}.m4a`);
   form.append("model", "saaras:v4");
-  form.append("mode", input.mode ?? "transcribe");
+  form.append("mode", input.mode ?? "codemix");
   if (input.languageCode) form.append("language_code", input.languageCode);
   const response = await fetch("https://api.sarvam.ai/speech-to-text", {
     method: "POST", headers: authHeaders(), body: form
   });
   const payload = await response.json().catch(() => ({})) as Record<string, any>;
-  if (!response.ok) throw new Error(payload.message ?? `Sarvam request failed (${response.status}).`);
+  if (!response.ok) {
+    const errorMsg = payload.error?.message ?? payload.message ?? `Sarvam request failed (${response.status}).`;
+    throw new Error(errorMsg);
+  }
   const transcriptText = typeof payload.transcript === "string" ? payload.transcript.trim() : "";
   return {
     provider: "sarvam",
