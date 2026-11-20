@@ -20,7 +20,7 @@ export default function HomeScreen() {
   const refresh = useCallback(() => {
     listStories().then(setStories).catch(console.error);
     getStats().then(setStats).catch(console.error);
-    listNotificationsClient().then(res => setUnreadCount(res.unreadCount || 0)).catch(() => {});
+    listNotificationsClient().then(res => setUnreadCount(res.unreadCount || 0)).catch(() => { });
   }, []);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));

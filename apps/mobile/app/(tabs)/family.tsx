@@ -41,7 +41,7 @@ export default function FamilyScreen() {
       if (sess && sess.membershipStatus === 'active') {
         syncWithCloud()
           .then(() => refresh())
-          .catch(() => {});
+          .catch(() => { });
       }
     });
   }, [refresh]));
