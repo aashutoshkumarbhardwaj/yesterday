@@ -184,31 +184,61 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     if (!clientId) {
       return reply.code(503).send({
         error: "GOOGLE_OAUTH_NOT_CONFIGURED",
-        message: "GOOGLE_CLIENT_ID is not configured in .env. You can use Phone Number OTP or configure Google Cloud Console."
+        message: "GOOGLE_CLIENT_ID is not configured in .env. Please configure Google Cloud Console OAuth 2.0 Client ID."
       });
     }
 
+    const { return_to } = request.query as { return_to?: string };
     const redirectUri = `${config.auth.publicApiUrl}/v1/auth/google/callback`;
+
+    // Encode state so callback knows where to redirect the user (supports Expo Go & Standalone app)
+    const stateObj = { returnTo: return_to || "yesterday://auth" };
+    const stateStr = Buffer.from(JSON.stringify(stateObj)).toString("base64url");
+
     const googleAuthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     googleAuthUrl.searchParams.set("client_id", clientId);
     googleAuthUrl.searchParams.set("redirect_uri", redirectUri);
     googleAuthUrl.searchParams.set("response_type", "code");
     googleAuthUrl.searchParams.set("scope", "openid email profile");
     googleAuthUrl.searchParams.set("prompt", "select_account");
+    googleAuthUrl.searchParams.set("state", stateStr);
 
     return reply.redirect(googleAuthUrl.toString());
   });
 
   // 5. Google OAuth Callback (Exchanges code, signs JWT, redirects back to mobile app via deep link)
   app.get("/v1/auth/google/callback", async (request, reply) => {
-    const query = request.query as { code?: string; error?: string };
+    const query = request.query as { code?: string; error?: string; state?: string };
+
+    let returnTo = "yesterday://auth";
+    if (query.state) {
+      try {
+        const decoded = JSON.parse(Buffer.from(query.state, "base64url").toString("utf-8"));
+        if (decoded.returnTo) returnTo = decoded.returnTo;
+      } catch (err) {
+        console.warn("Could not decode OAuth state:", err);
+      }
+    }
+
+    const cancelUrl = `${returnTo}${returnTo.includes("?") ? "&" : "?"}error=${encodeURIComponent(query.error || "canceled")}`;
+
     if (query.error || !query.code) {
       return reply.type("text/html").send(`
+        <!DOCTYPE html>
         <html>
-          <body style="font-family:sans-serif; text-align:center; padding:40px;">
-            <h2>Google Authentication Canceled</h2>
-            <p>${query.error || "No authorization code received."}</p>
-            <a href="yesterday://auth?error=${encodeURIComponent(query.error || "canceled")}">Return to App</a>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Authentication Canceled</title>
+          </head>
+          <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#FAF6F0; color:#2C221E; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; padding:20px; box-sizing:border-box;">
+            <div style="background:#FFFFFF; border-radius:24px; padding:36px 28px; max-width:380px; width:100%; text-align:center; box-shadow:0 8px 30px rgba(44,34,30,0.08); border:1px solid #EAE3D9;">
+              <h2 style="font-size:20px; margin:0 0 12px; color:#EA4335;">Sign-In Canceled</h2>
+              <p style="font-size:14px; margin:0 0 24px; color:#6B5E51; line-height:1.5;">${query.error || "No authorization code was returned by Google."}</p>
+              <a href="${cancelUrl}" style="display:block; background:#2C221E; color:#FFFFFF; text-decoration:none; padding:12px 20px; border-radius:12px; font-weight:600; font-size:14px;">
+                Return to App
+              </a>
+            </div>
           </body>
         </html>
       `);
@@ -219,6 +249,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     const redirectUri = `${config.auth.publicApiUrl}/v1/auth/google/callback`;
 
     try {
+      if (!clientSecret) {
+        throw new Error(
+          "GOOGLE_CLIENT_SECRET is missing. In Google Cloud Console, create an OAuth 2.0 Web Application client, copy the Client Secret, and set GOOGLE_CLIENT_SECRET in .env."
+        );
+      }
+
       // Exchange code for tokens
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
@@ -232,9 +268,15 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         })
       });
 
-      const tokenData = (await tokenRes.json()) as { access_token?: string; id_token?: string };
+      const tokenData = (await tokenRes.json()) as {
+        access_token?: string;
+        id_token?: string;
+        error?: string;
+        error_description?: string;
+      };
+
       if (!tokenData.access_token) {
-        throw new Error("Failed to obtain Google access token");
+        throw new Error(tokenData.error_description || tokenData.error || "Failed to obtain Google access token");
       }
 
       // Fetch user profile from Google
@@ -268,38 +310,62 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         config.auth.jwtSecret
       );
 
-      // Deep link back to the mobile app
-      const appUrl = `yesterday://auth?token=${encodeURIComponent(token)}&user=${encodeURIComponent(JSON.stringify(user))}`;
+      // Deep link back to the mobile app (supports both Expo Go and Standalone builds)
+      const sep = returnTo.includes("?") ? "&" : "?";
+      const appUrl = `${returnTo}${sep}token=${encodeURIComponent(token)}&user=${encodeURIComponent(JSON.stringify(user))}`;
 
       return reply.type("text/html").send(`
         <!DOCTYPE html>
         <html>
           <head>
             <meta charset="utf-8">
-            <title>Logging in...</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Logging into Yesterday...</title>
             <script>
-              window.location.href = "${appUrl}";
+              window.location.replace("${appUrl}");
+              setTimeout(function() {
+                window.location.href = "${appUrl}";
+              }, 400);
             </script>
           </head>
-          <body style="font-family:system-ui, -apple-system, sans-serif; text-align:center; padding:50px; background:#FAF6F0; color:#2B2118;">
-            <div style="max-width:400px; margin:0 auto; background:#fff; padding:30px; border-radius:16px; box-shadow:0 4px 20px rgba(0,0,0,0.08);">
-              <h2 style="color:#C95D4A; margin-top:0;">Welcome back, ${user.name}!</h2>
-              <p style="color:#6B5E51;">Redirecting to Yesterday...</p>
-              <a href="${appUrl}" style="display:inline-block; margin-top:16px; background:#C95D4A; color:#fff; text-decoration:none; padding:12px 24px; border-radius:999px; font-weight:bold;">
+          <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#FAF6F0; color:#2C221E; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; padding:20px; box-sizing:border-box;">
+            <div style="background:#FFFFFF; border-radius:24px; padding:36px 28px; max-width:380px; width:100%; text-align:center; box-shadow:0 8px 30px rgba(44,34,30,0.08); border:1px solid #EAE3D9;">
+              <div style="width:64px; height:64px; border-radius:32px; background:#F4ECE2; margin:0 auto 16px; display:flex; align-items:center; justify-content:center;">
+                <span style="font-size:28px;">🌳</span>
+              </div>
+              <h2 style="font-size:22px; margin:0 0 8px; color:#2C221E; font-weight:700;">Welcome, ${user.name}!</h2>
+              <p style="font-size:14px; margin:0 0 24px; color:#6B5E51; line-height:1.5;">${user.email}</p>
+              <a href="${appUrl}" style="display:block; background:#8B4513; color:#FFFFFF; text-decoration:none; padding:14px 20px; border-radius:12px; font-weight:600; font-size:15px; box-shadow:0 4px 12px rgba(139,69,19,0.25);">
                 Open Yesterday App
               </a>
+              <p style="font-size:12px; color:#A89F91; margin:16px 0 0;">If the app didn't open automatically, tap the button above.</p>
             </div>
           </body>
         </html>
       `);
     } catch (err) {
       console.error("Google callback error:", err);
+      const errMessage = err instanceof Error ? err.message : "Authentication failed.";
+      const errorReturnUrl = `${returnTo}${returnTo.includes("?") ? "&" : "?"}error=${encodeURIComponent(errMessage)}`;
+
       return reply.type("text/html").send(`
+        <!DOCTYPE html>
         <html>
-          <body style="font-family:sans-serif; text-align:center; padding:40px;">
-            <h2>Google Sign-In Error</h2>
-            <p>${err instanceof Error ? err.message : "Authentication failed."}</p>
-            <a href="yesterday://auth?error=failed">Return to App</a>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Google Sign-In Error</title>
+          </head>
+          <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#FAF6F0; color:#2C221E; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; padding:20px; box-sizing:border-box;">
+            <div style="background:#FFFFFF; border-radius:24px; padding:36px 28px; max-width:400px; width:100%; text-align:center; box-shadow:0 8px 30px rgba(44,34,30,0.08); border:1px solid #EAE3D9;">
+              <h2 style="font-size:20px; margin:0 0 12px; color:#EA4335;">Sign-In Error</h2>
+              <p style="font-size:13px; margin:0 0 20px; color:#5D4037; text-align:left; line-height:1.6; background:#FFF4F2; padding:14px; border-radius:10px; border:1px solid #FFD0CB;">
+                ${errMessage}
+              </p>
+              <a href="${errorReturnUrl}" style="display:block; background:#2C221E; color:#FFFFFF; text-decoration:none; padding:12px 20px; border-radius:12px; font-weight:600; font-size:14px;">
+                Return to App
+              </a>
+            </div>
           </body>
         </html>
       `);

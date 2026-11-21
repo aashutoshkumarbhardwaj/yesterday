@@ -72,17 +72,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
     restoreSession();
   }, []);
 
-  // Listen to deep linking (e.g. yesterday://auth?token=...&user=...) from Google OAuth redirect
+  // Listen to deep linking (e.g. yesterday://auth?token=...&user=... or exp://.../--/auth?token=...) from Google OAuth redirect
   useEffect(() => {
+    function parseAuthParams(rawUrl: string): Record<string, string> {
+      const params: Record<string, string> = {};
+      const queryIdx = rawUrl.indexOf("?");
+      if (queryIdx === -1) return params;
+      const queryString = (rawUrl.slice(queryIdx + 1).split("#")[0]) || "";
+      for (const part of queryString.split("&")) {
+        const [k, v] = part.split("=");
+        if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || "");
+      }
+      return params;
+    }
+
     function handleDeepLink(event: { url: string }) {
       try {
         const urlStr = event.url;
         if (!urlStr.includes("auth")) return;
 
-        const url = new URL(urlStr);
-        const queryToken = url.searchParams.get("token");
-        const queryUser = url.searchParams.get("user");
-        const queryError = url.searchParams.get("error");
+        const params = parseAuthParams(urlStr);
+        const queryToken = params.token;
+        const queryUser = params.user;
+        const queryError = params.error;
 
         if (queryError) {
           Alert.alert("Google Sign-In", `Sign-in was canceled or failed: ${queryError}`);
@@ -90,7 +102,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
 
         if (queryToken && queryUser) {
-          const parsedUser = JSON.parse(decodeURIComponent(queryUser)) as AuthUser;
+          const parsedUser = JSON.parse(queryUser) as AuthUser;
           setToken(queryToken);
           setUser(parsedUser);
           setAuthenticatedProfile(parsedUser.id, parsedUser.name);
@@ -104,7 +116,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
 
     const sub = Linking.addEventListener("url", handleDeepLink);
-    Linking.getInitialURL().then(initialUrl => {
+    Linking.getInitialURL().then((initialUrl?: string | null) => {
       if (initialUrl) handleDeepLink({ url: initialUrl });
     });
 
@@ -160,15 +172,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   };
 
-  // 3. Google Sign-In via Browser Deep Link
+  // 3. Google Sign-In via Browser Deep Link (Production OAuth flow)
   const loginWithGoogleWeb = async () => {
-    const loginUrl = `${getServerUrl()}/v1/auth/google/login`;
-    const supported = await Linking.canOpenURL(loginUrl).catch(() => false);
-    if (!supported) {
-      Alert.alert("Error", "Could not launch web browser for Google Sign-In.");
-      return;
+    try {
+      const returnUrl = "yesterday://auth";
+      const loginUrl = `${getServerUrl()}/v1/auth/google/login?return_to=${encodeURIComponent(returnUrl)}`;
+      await Linking.openURL(loginUrl);
+    } catch (err) {
+      Alert.alert("Google Sign-In Error", err instanceof Error ? err.message : "Could not launch web browser for Google Sign-In.");
     }
-    await Linking.openURL(loginUrl);
   };
 
   // 4. Google Sign-In Direct (For testing or client SDK)

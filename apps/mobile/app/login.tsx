@@ -43,8 +43,9 @@ export default function LoginScreen() {
   const [otpSent, setOtpSent] = useState(false);
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [googleEmail, setGoogleEmail] = useState("ashutoshkumarbhardwaj7@gmail.com");
-  const [googleName, setGoogleName] = useState("Ashutosh Bhardwaj");
+  const [googleEmail, setGoogleEmail] = useState("");
+  const [googleName, setGoogleName] = useState("");
+  const [showManualGoogle, setShowManualGoogle] = useState(false);
 
   // If already logged in, show profile card with option to log out
   if (user) {
@@ -155,9 +156,13 @@ export default function LoginScreen() {
 
   // Handle One-Tap Google Direct Login
   const handleGoogleDirect = async () => {
+    if (!googleEmail.trim()) {
+      Alert.alert("Email Required", "Please enter your Google email address.");
+      return;
+    }
     setLoading(true);
-    const targetEmail = googleEmail.trim() || "ashutoshkumarbhardwaj7@gmail.com";
-    const targetName = googleName.trim() || "Ashutosh Bhardwaj";
+    const targetEmail = googleEmail.trim();
+    const targetName = googleName.trim() || targetEmail.split("@")[0] || "Google User";
     const success = await loginWithGoogleDirect({
       email: targetEmail,
       name: targetName,
@@ -165,7 +170,7 @@ export default function LoginScreen() {
     });
     setLoading(false);
     if (success) {
-      Alert.alert("Signed In with Google", `Welcome ${targetName}! Signed in as ${targetEmail}.`);
+      Alert.alert("Signed In", `Welcome ${targetName}! Signed in as ${targetEmail}.`);
       router.back();
     }
   };
@@ -613,55 +618,73 @@ export default function LoginScreen() {
                 </View>
                 <Text style={styles.googleTitle}>Sign In with Google</Text>
                 <Text style={styles.googleDesc}>
-                  Access your shared family tree, sync oral histories, and collaborate across devices with zero setup.
+                  Sign in with any personal or family Google account to sync your family tree, preserve oral histories, and collaborate across devices.
                 </Text>
               </View>
 
-              <Text style={styles.inputLabel}>GOOGLE ACCOUNT NAME</Text>
-              <TextInput
-                value={googleName}
-                onChangeText={setGoogleName}
-                placeholder="Ashutosh Bhardwaj"
-                placeholderTextColor={colors.muted}
-                style={styles.input}
-              />
-
-              <Text style={styles.inputLabel}>GOOGLE EMAIL ADDRESS</Text>
-              <TextInput
-                value={googleEmail}
-                onChangeText={setGoogleEmail}
-                placeholder="ashutoshkumarbhardwaj7@gmail.com"
-                placeholderTextColor={colors.muted}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                style={styles.input}
-              />
-
+              {/* Primary Action: Official Google Sign-In via OAuth */}
               <Pressable
-                onPress={handleGoogleDirect}
+                onPress={handleGoogleWeb}
                 disabled={loading}
-                style={styles.googleBtn}
+                style={styles.googleOfficialBtn}
               >
-                {loading ? (
-                  <ActivityIndicator size="small" color={colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="logo-google" size={18} color={colors.white} />
-                    <Text style={styles.googleBtnText}>1-Tap Sign In with Google</Text>
-                  </>
-                )}
+                <Ionicons name="logo-google" size={20} color="#EA4335" />
+                <Text style={styles.googleOfficialBtnText}>Continue with Google</Text>
               </Pressable>
 
+              <Text style={styles.googleSecurityNote}>
+                Secure authentication powered by Google Identity. We only access your basic profile (name, email, avatar).
+              </Text>
+
+              {/* Optional Manual / Offline Sign-in Toggle */}
               <View style={styles.orDivider}>
                 <View style={styles.orLine} />
-                <Text style={styles.orText}>OR WEB BROWSER AUTH</Text>
+                <Pressable onPress={() => setShowManualGoogle((prev) => !prev)}>
+                  <Text style={styles.orText}>
+                    {showManualGoogle ? "HIDE MANUAL SIGN-IN ▲" : "MANUAL EMAIL SIGN-IN ▼"}
+                  </Text>
+                </Pressable>
                 <View style={styles.orLine} />
               </View>
 
-              <Pressable onPress={handleGoogleWeb} style={styles.googleWebBtn}>
-                <Ionicons name="globe-outline" size={18} color="#2C221E" />
-                <Text style={styles.googleWebBtnText}>Sign In via Google OAuth Web</Text>
-              </Pressable>
+              {showManualGoogle ? (
+                <View style={styles.manualBox}>
+                  <Text style={styles.inputLabel}>YOUR FULL NAME</Text>
+                  <TextInput
+                    value={googleName}
+                    onChangeText={setGoogleName}
+                    placeholder="e.g. Ramesh Sharma"
+                    placeholderTextColor={colors.muted}
+                    style={styles.input}
+                  />
+
+                  <Text style={styles.inputLabel}>GOOGLE EMAIL ADDRESS *</Text>
+                  <TextInput
+                    value={googleEmail}
+                    onChangeText={setGoogleEmail}
+                    placeholder="your.email@gmail.com"
+                    placeholderTextColor={colors.muted}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    style={styles.input}
+                  />
+
+                  <Pressable
+                    onPress={handleGoogleDirect}
+                    disabled={loading}
+                    style={styles.googleManualBtn}
+                  >
+                    {loading ? (
+                      <ActivityIndicator size="small" color={colors.white} />
+                    ) : (
+                      <>
+                        <Ionicons name="mail-outline" size={17} color={colors.white} />
+                        <Text style={styles.googleManualBtnText}>Sign In with This Email</Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           )}
 
@@ -1265,6 +1288,55 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 17,
     paddingHorizontal: 10
+  },
+  googleOfficialBtn: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: radius.md,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 14,
+    borderWidth: 1.5,
+    borderColor: "#E0D7CE",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2
+  },
+  googleOfficialBtnText: {
+    color: "#2C221E",
+    fontSize: 16,
+    fontWeight: "700"
+  },
+  googleSecurityNote: {
+    fontSize: 11,
+    color: "#8C7E74",
+    textAlign: "center",
+    marginTop: 12,
+    lineHeight: 16,
+    paddingHorizontal: 8
+  },
+  manualBox: {
+    marginTop: 6
+  },
+  googleManualBtn: {
+    backgroundColor: "#2C221E",
+    borderRadius: radius.md,
+    paddingVertical: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10
+  },
+  googleManualBtnText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: "700"
   },
   googleBtn: {
     backgroundColor: "#2C221E",
