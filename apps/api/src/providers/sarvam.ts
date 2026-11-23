@@ -25,6 +25,17 @@ async function sarvamJson(path: string, init: RequestInit = {}) {
   return payload;
 }
 
+function normalizeSarvamLanguageCode(code?: string): string | undefined {
+  if (!code) return undefined;
+  const c = code.toLowerCase().trim();
+  // Sarvam official API does not accept bho/bho-IN as standalone ISO codes, but its Hindi model
+  // natively handles Bhojpuri, Maithili, Magahi, and Awadhi regional dialects and accents.
+  if (c === "bho" || c === "bho-in" || c === "bhojpuri" || c === "awa" || c === "mag" || c === "mai") {
+    return "hi-IN";
+  }
+  return code;
+}
+
 export async function transcribeShortAudio(input: {
   bytes: Buffer;
   filename: string;
@@ -38,7 +49,8 @@ export async function transcribeShortAudio(input: {
   form.append("file", new Blob([new Uint8Array(input.bytes)], { type: mimeType }), input.filename.endsWith(".m4a") ? input.filename : `${input.filename}.m4a`);
   form.append("model", "saaras:v4");
   form.append("mode", input.mode ?? "codemix");
-  if (input.languageCode) form.append("language_code", input.languageCode);
+  const normalizedLang = normalizeSarvamLanguageCode(input.languageCode);
+  if (normalizedLang) form.append("language_code", normalizedLang);
   const response = await fetch("https://api.sarvam.ai/speech-to-text", {
     method: "POST", headers: authHeaders(), body: form
   });
@@ -66,13 +78,14 @@ export async function startBatchTranscription(input: {
   mode?: "transcribe" | "translate" | "verbatim" | "translit" | "codemix";
 }) {
   const safeName = `${randomUUID()}-${input.filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80)}`;
+  const normalizedLang = normalizeSarvamLanguageCode(input.languageCode);
   const job = await sarvamJson("/speech-to-text/job/v1", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ job_parameters: {
       model: "saaras:v4",
       mode: input.mode ?? "codemix",
-      ...(input.languageCode ? { language_code: input.languageCode } : {}),
+      ...(normalizedLang ? { language_code: normalizedLang } : {}),
       with_diarization: true,
       with_timestamps: true
     } })

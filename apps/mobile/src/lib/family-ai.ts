@@ -1,10 +1,11 @@
 import { archiveContext, type SuggestedPerson } from './database';
-import { getServerUrl } from './sync-client';
+import { detectActiveServerUrl, getServerUrl } from './sync-client';
 
 const API_TOKEN = process.env.EXPO_PUBLIC_API_TOKEN;
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const url = `${getServerUrl()}${path}`;
+  const server = await detectActiveServerUrl();
+  const url = `${server}${path}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: {

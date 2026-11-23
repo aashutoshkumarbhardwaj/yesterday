@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, type PropsWithChildren } from "react";
-import { Alert, Linking } from "react-native";
+import { Alert } from "react-native";
+import * as Linking from "expo-linking";
 import { getSetting, setSetting } from "./database";
-import { getServerUrl, setAuthenticatedProfile } from "./sync-client";
+import { detectActiveServerUrl, getServerUrl, setAuthenticatedProfile } from "./sync-client";
 
 export interface AuthUser {
   id: string;
@@ -74,35 +75,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   // Listen to deep linking (e.g. yesterday://auth?token=...&user=... or exp://.../--/auth?token=...) from Google OAuth redirect
   useEffect(() => {
-    function parseAuthParams(rawUrl: string): Record<string, string> {
-      const params: Record<string, string> = {};
-      const queryIdx = rawUrl.indexOf("?");
-      if (queryIdx === -1) return params;
-      const queryString = (rawUrl.slice(queryIdx + 1).split("#")[0]) || "";
-      for (const part of queryString.split("&")) {
-        const [k, v] = part.split("=");
-        if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || "");
-      }
-      return params;
-    }
-
     function handleDeepLink(event: { url: string }) {
       try {
         const urlStr = event.url;
-        if (!urlStr.includes("auth")) return;
+        if (!urlStr || !urlStr.includes("auth")) return;
 
-        const params = parseAuthParams(urlStr);
-        const queryToken = params.token;
-        const queryUser = params.user;
-        const queryError = params.error;
+        const parsed = Linking.parse(urlStr);
+        const queryToken = (parsed.queryParams?.token as string) || "";
+        const rawUser = (parsed.queryParams?.user as string) || "";
+        const queryError = (parsed.queryParams?.error as string) || "";
 
         if (queryError) {
           Alert.alert("Google Sign-In", `Sign-in was canceled or failed: ${queryError}`);
           return;
         }
 
-        if (queryToken && queryUser) {
-          const parsedUser = JSON.parse(queryUser) as AuthUser;
+        if (queryToken && rawUser) {
+          const parsedUser = typeof rawUser === "string" ? JSON.parse(rawUser) : (rawUser as AuthUser);
           setToken(queryToken);
           setUser(parsedUser);
           setAuthenticatedProfile(parsedUser.id, parsedUser.name);
@@ -128,7 +117,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // 1. Send OTP to Phone
   const sendPhoneOtp = async (phoneNumber: string) => {
     try {
-      const res = await fetch(`${getServerUrl()}/v1/auth/phone/send-otp`, {
+      const server = await detectActiveServerUrl();
+      const res = await fetch(`${server}/v1/auth/phone/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber })
@@ -150,7 +140,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // 2. Verify Phone OTP
   const verifyPhoneOtp = async (phoneNumber: string, otp: string, name?: string) => {
     try {
-      const res = await fetch(`${getServerUrl()}/v1/auth/phone/verify-otp`, {
+      const server = await detectActiveServerUrl();
+      const res = await fetch(`${server}/v1/auth/phone/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber, otp, name })
@@ -175,8 +166,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // 3. Google Sign-In via Browser Deep Link (Production OAuth flow)
   const loginWithGoogleWeb = async () => {
     try {
-      const returnUrl = "yesterday://auth";
-      const loginUrl = `${getServerUrl()}/v1/auth/google/login?return_to=${encodeURIComponent(returnUrl)}`;
+      const returnUrl = Linking.createURL("auth");
+      const server = await detectActiveServerUrl();
+      const loginUrl = `${server}/v1/auth/google/login?return_to=${encodeURIComponent(returnUrl)}`;
       await Linking.openURL(loginUrl);
     } catch (err) {
       Alert.alert("Google Sign-In Error", err instanceof Error ? err.message : "Could not launch web browser for Google Sign-In.");
@@ -186,7 +178,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // 4. Google Sign-In Direct (For testing or client SDK)
   const loginWithGoogleDirect = async (profile: { email: string; name?: string; avatarUrl?: string }) => {
     try {
-      const res = await fetch(`${getServerUrl()}/v1/auth/google`, {
+      const server = await detectActiveServerUrl();
+      const res = await fetch(`${server}/v1/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(profile)

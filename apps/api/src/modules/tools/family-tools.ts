@@ -8,8 +8,22 @@ import {
   recordLifeEvent,
   updatePerson,
   updateRelationship,
+  createMemory,
+  updateMemory,
+  getMemory,
+  listMemories,
+  attachPeopleToMemory,
+  addPersonFact,
+  updatePersonFact,
+  searchPersonFacts,
+  validateFamilyGraph,
+  correctRelationship,
   GraphPerson,
-  GraphRelationship
+  GraphRelationship,
+  GraphMemory,
+  FactSuggestion,
+  RelationshipType,
+  FactType
 } from "../graph/graph-store.js";
 import { recordRevision } from "../audit/revision-store.js";
 import { calculateKinship } from "../genealogy/kinship-engine.js";
@@ -731,6 +745,551 @@ export const listContributorMemoriesTool: AgentToolDefinition = {
       contributor: contributorName,
       count: matches.length,
       stories: matches.map((m) => ({ id: m.id, title: m.title, createdAt: m.createdAt }))
+    };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// 6. RELATIONSHIPS ENHANCED TOOLS
+// ---------------------------------------------------------------------------
+
+export const getRelationshipsTool: AgentToolDefinition = {
+  name: "get_relationships",
+  description: "Retrieve family relationships, optionally filtered by person ID or name.",
+  riskLevel: "low",
+  schema: z.object({
+    personId: z.string().optional().describe("Filter relationships involving this person ID or name")
+  }),
+  execute: async ({ personId }, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    const rels = Object.values(graph.relationships) as GraphRelationship[];
+    let filtered = rels;
+
+    if (personId) {
+      const pLower = personId.toLowerCase().trim();
+      // Match by ID or Name
+      const targetPerson = Object.values(graph.people).find(
+        (p) => p.id === personId || p.displayName.toLowerCase() === pLower || p.aliases.some((a) => a.toLowerCase() === pLower)
+      );
+      const targetId = targetPerson ? targetPerson.id : personId;
+      filtered = rels.filter((r) => r.fromPersonId === targetId || r.toPersonId === targetId);
+    }
+
+    return {
+      total: filtered.length,
+      relationships: filtered.map((r) => ({
+        id: r.id,
+        fromPersonId: r.fromPersonId,
+        fromName: graph.people[r.fromPersonId]?.displayName || r.fromPersonId,
+        toPersonId: r.toPersonId,
+        toName: graph.people[r.toPersonId]?.displayName || r.toPersonId,
+        type: r.type,
+        status: r.status,
+        evidenceText: r.evidenceText
+      }))
+    };
+  }
+};
+
+export const updateRelationshipTool: AgentToolDefinition = {
+  name: "update_relationship",
+  description: "Update details or status of an existing relationship edge.",
+  riskLevel: "moderate",
+  schema: z.object({
+    relationshipId: z.string().describe("ID of the relationship to update"),
+    type: z.string().optional().describe("Corrected relationship type"),
+    status: z.enum(["suggested", "confirmed", "disputed"]).optional(),
+    evidenceText: z.string().optional().describe("Updated evidence context")
+  }),
+  execute: async (input, ctx) => {
+    const updated = updateRelationship(input.relationshipId, ctx.familyId, {
+      ...(input.type ? { type: input.type as RelationshipType } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.evidenceText ? { evidenceText: input.evidenceText } : {})
+    });
+
+    if (!updated) {
+      return { success: false, message: `Relationship "${input.relationshipId}" not found.` };
+    }
+
+    return { success: true, relationship: updated, message: `Updated relationship ${updated.id}.` };
+  }
+};
+
+export const correctRelationshipTool: AgentToolDefinition = {
+  name: "correct_relationship",
+  description: "Correct an inaccurate relationship between two relatives (e.g. 'Mahesh is my grandfather\\'s brother, not my grandfather'), ensuring no impossible cycle is created.",
+  riskLevel: "moderate",
+  schema: z.object({
+    personA: z.string().describe("First person's ID or full name"),
+    personB: z.string().describe("Second person's ID or full name"),
+    newRelation: z.string().describe("Corrected relationship type (parent, child, spouse, sibling, uncle, aunt, etc.)"),
+    evidenceText: z.string().optional().describe("Reason or conversation excerpt for this correction")
+  }),
+  execute: async (input, ctx) => {
+    const graph = getGraph(ctx.familyId);
+
+    const resolvePerson = (idOrName: string): GraphPerson | undefined => {
+      if (graph.people[idOrName]) return graph.people[idOrName];
+      const lower = idOrName.toLowerCase().trim();
+      if (lower === "me" || lower === "myself" || lower === "user" || lower === ctx.userId.toLowerCase()) {
+        return graph.people[ctx.userId] || Object.values(graph.people).find((p) => p.displayName.toLowerCase() === "me");
+      }
+      return Object.values(graph.people).find(
+        (p) => p.displayName.toLowerCase().trim() === lower || p.aliases.some((a) => a.toLowerCase().trim() === lower)
+      );
+    };
+
+    const pA = resolvePerson(input.personA);
+    const pB = resolvePerson(input.personB);
+
+    if (!pA || !pB) {
+      return {
+        success: false,
+        message: `Could not identify relative "${!pA ? input.personA : input.personB}" in the family.`
+      };
+    }
+
+    let relType: RelationshipType = "parent";
+    const lowerType = input.newRelation.toLowerCase();
+    if (lowerType.includes("child") || lowerType.includes("son") || lowerType.includes("daughter")) relType = "child";
+    else if (lowerType.includes("spouse") || lowerType.includes("wife") || lowerType.includes("husband") || lowerType.includes("married")) relType = "spouse";
+    else if (lowerType.includes("sibling") || lowerType.includes("brother") || lowerType.includes("sister")) relType = "sibling";
+    else if (lowerType.includes("uncle") || lowerType.includes("chacha") || lowerType.includes("mama")) relType = "uncle";
+    else if (lowerType.includes("aunt") || lowerType.includes("chachi") || lowerType.includes("mami") || lowerType.includes("bua")) relType = "aunt";
+    else if (lowerType.includes("grandparent") || lowerType.includes("dada") || lowerType.includes("nana")) relType = "grandparent";
+    else if (lowerType.includes("parent") || lowerType.includes("father") || lowerType.includes("mother")) relType = "parent";
+    else relType = "other";
+
+    const result = correctRelationship({
+      familyId: ctx.familyId,
+      personAId: pA.id,
+      personBId: pB.id,
+      newRelation: relType,
+      evidenceText: input.evidenceText,
+      actorId: ctx.userId
+    });
+
+    return result;
+  }
+};
+
+export const validateFamilyGraphTool: AgentToolDefinition = {
+  name: "validate_family_graph",
+  description: "Inspect the family tree for structural errors, circular parent-child ancestry, self-links, or contradictions.",
+  riskLevel: "low",
+  schema: z.object({}),
+  execute: async (_, ctx) => {
+    const validation = validateFamilyGraph(ctx.familyId);
+    return {
+      valid: validation.valid,
+      summary: validation.valid
+        ? "Family tree graph is mathematically consistent with no cycles or self-references."
+        : `Found ${validation.errors.length} integrity issue(s): ${validation.errors.join("; ")}`,
+      cycleFound: validation.cycleFound,
+      selfLinks: validation.selfLinks,
+      contradictions: validation.contradictions,
+      errors: validation.errors
+    };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// 7. MEMORIES & STORIES TOOLS (PRESERVING UNSTRUCTURED NARRATIVES)
+// ---------------------------------------------------------------------------
+
+export const createMemoryTool: AgentToolDefinition = {
+  name: "create_memory",
+  description: "Save a family narrative, memory, cultural tradition, or childhood story verbatim, separate from individual facts.",
+  riskLevel: "low",
+  schema: z.object({
+    title: z.string().describe("Descriptive title for the memory or story"),
+    narrative: z.string().describe("Full original story or narrative told by the user"),
+    peopleInvolved: z.array(z.string()).optional().describe("Names or IDs of family members in this story"),
+    approximateDate: z.string().optional().describe("Estimated date or decade (e.g. '1970s', 'Diwali 1985')"),
+    location: z.string().optional().describe("Location where the event happened"),
+    traditions: z.array(z.string()).optional().describe("Traditions, recipes, or cultural customs mentioned"),
+    mediaUrls: z.array(z.string()).optional().describe("Associated photograph or audio URLs")
+  }),
+  execute: async (input, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    const resolvedPeople: string[] = [];
+
+    if (input.peopleInvolved && Array.isArray(input.peopleInvolved)) {
+      for (const p of input.peopleInvolved) {
+        if (graph.people[p]) {
+          resolvedPeople.push(p);
+        } else {
+          const lower = p.toLowerCase().trim();
+          const found = Object.values(graph.people).find(
+            (item) => item.displayName.toLowerCase().trim() === lower || item.aliases.some((a) => a.toLowerCase().trim() === lower)
+          );
+          if (found) resolvedPeople.push(found.id);
+          else resolvedPeople.push(p);
+        }
+      }
+    }
+
+    const memory = createMemory({
+      familyId: ctx.familyId,
+      title: input.title.trim(),
+      narrative: input.narrative.trim(),
+      peopleInvolved: resolvedPeople,
+      approximateDate: input.approximateDate?.trim(),
+      location: input.location?.trim(),
+      traditions: input.traditions || [],
+      mediaUrls: input.mediaUrls || [],
+      sourceType: "conversation",
+      createdBy: ctx.userId
+    });
+
+    return {
+      success: true,
+      memory,
+      message: `Preserved family story: "${memory.title}".`
+    };
+  }
+};
+
+export const updateMemoryTool: AgentToolDefinition = {
+  name: "update_memory",
+  description: "Update an existing family memory's narrative, title, location, or date.",
+  riskLevel: "low",
+  schema: z.object({
+    memoryId: z.string().describe("ID of the memory to update"),
+    title: z.string().optional(),
+    narrative: z.string().optional(),
+    approximateDate: z.string().optional(),
+    location: z.string().optional(),
+    traditions: z.array(z.string()).optional()
+  }),
+  execute: async (input, ctx) => {
+    const updated = updateMemory(input.memoryId, ctx.familyId, {
+      ...(input.title ? { title: input.title.trim() } : {}),
+      ...(input.narrative ? { narrative: input.narrative.trim() } : {}),
+      ...(input.approximateDate ? { approximateDate: input.approximateDate.trim() } : {}),
+      ...(input.location ? { location: input.location.trim() } : {}),
+      ...(input.traditions ? { traditions: input.traditions } : {})
+    });
+
+    if (!updated) {
+      return { success: false, message: `Memory "${input.memoryId}" not found.` };
+    }
+
+    return { success: true, memory: updated, message: `Updated story: "${updated.title}".` };
+  }
+};
+
+export const attachPeopleToMemoryTool: AgentToolDefinition = {
+  name: "attach_people_to_memory",
+  description: "Link family members to a previously saved memory or story.",
+  riskLevel: "low",
+  schema: z.object({
+    memoryId: z.string().describe("ID of the memory"),
+    people: z.array(z.string()).describe("Names or IDs of family members to associate")
+  }),
+  execute: async (input, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    const resolvedIds: string[] = [];
+
+    for (const p of input.people) {
+      if (graph.people[p]) {
+        resolvedIds.push(p);
+      } else {
+        const lower = p.toLowerCase().trim();
+        const found = Object.values(graph.people).find(
+          (item) => item.displayName.toLowerCase().trim() === lower || item.aliases.some((a) => a.toLowerCase().trim() === lower)
+        );
+        if (found) resolvedIds.push(found.id);
+        else resolvedIds.push(p);
+      }
+    }
+
+    const updated = attachPeopleToMemory(input.memoryId, resolvedIds, ctx.familyId);
+    if (!updated) {
+      return { success: false, message: `Memory "${input.memoryId}" not found.` };
+    }
+
+    return {
+      success: true,
+      memory: updated,
+      message: `Attached ${resolvedIds.length} person(s) to "${updated.title}".`
+    };
+  }
+};
+
+export const searchMemoriesTool: AgentToolDefinition = {
+  name: "search_memories",
+  description: "Search saved family stories and memories by keyword, location, tradition, or person.",
+  riskLevel: "low",
+  schema: z.object({
+    query: z.string().optional().describe("Search keywords in title, story narrative, or location"),
+    personId: z.string().optional().describe("Filter memories involving this person ID or name"),
+    limit: z.number().optional().describe("Max memories to return")
+  }),
+  execute: async (input, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    let resolvedPersonId = input.personId;
+    if (input.personId && !graph.people[input.personId]) {
+      const lower = input.personId.toLowerCase().trim();
+      const found = Object.values(graph.people).find(
+        (p) => p.displayName.toLowerCase().trim() === lower || p.aliases.some((a) => a.toLowerCase().trim() === lower)
+      );
+      if (found) resolvedPersonId = found.id;
+    }
+
+    const results = listMemories(ctx.familyId, {
+      query: input.query,
+      personId: resolvedPersonId,
+      limit: input.limit || 20
+    });
+
+    return {
+      total: results.length,
+      memories: results.map((m) => ({
+        id: m.id,
+        title: m.title,
+        approximateDate: m.approximateDate,
+        location: m.location,
+        peopleInvolved: m.peopleInvolved.map((pid) => graph.people[pid]?.displayName || pid),
+        traditions: m.traditions,
+        excerpt: m.narrative.length > 200 ? m.narrative.slice(0, 200) + "..." : m.narrative
+      }))
+    };
+  }
+};
+
+export const retrieveMemoryDetailsTool: AgentToolDefinition = {
+  name: "retrieve_memory_details",
+  description: "Fetch the full narrative and linked relatives for a specific family memory.",
+  riskLevel: "low",
+  schema: z.object({
+    memoryId: z.string().describe("ID of the memory")
+  }),
+  execute: async ({ memoryId }, ctx) => {
+    const memory = getMemory(memoryId, ctx.familyId);
+    if (!memory) {
+      return { found: false, message: `Memory "${memoryId}" not found.` };
+    }
+
+    const graph = getGraph(ctx.familyId);
+    return {
+      found: true,
+      memory: {
+        ...memory,
+        peopleNames: memory.peopleInvolved.map((pid) => graph.people[pid]?.displayName || pid)
+      }
+    };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// 8. FACTS TOOLS (STRUCTURED BIOGRAPHICAL EVIDENCE)
+// ---------------------------------------------------------------------------
+
+export const addPersonFactTool: AgentToolDefinition = {
+  name: "add_person_fact",
+  description: "Record a verified biographical fact (e.g. occupation, birthplace, education, religion, military service) for a relative.",
+  riskLevel: "low",
+  schema: z.object({
+    personId: z.string().describe("Person ID or full name"),
+    factType: z.enum(["person_identity", "relationship", "date", "place", "event", "alias", "bio", "recipe", "tradition", "other"]).default("bio"),
+    fieldName: z.string().describe("Attribute name (e.g. 'occupation', 'birthPlace', 'education')"),
+    fieldValue: z.any().describe("Value of the fact"),
+    evidenceText: z.string().optional().describe("Verbatim quote or excerpt establishing this fact"),
+    confidence: z.number().min(0).max(1).optional().default(0.95)
+  }),
+  execute: async (input, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    let person = graph.people[input.personId];
+    if (!person) {
+      const lower = input.personId.toLowerCase().trim();
+      person = Object.values(graph.people).find(
+        (p) => p.displayName.toLowerCase().trim() === lower || p.aliases.some((a) => a.toLowerCase().trim() === lower)
+      );
+    }
+    if (!person) {
+      return { success: false, message: `Person "${input.personId}" not found.` };
+    }
+
+    const fact = addPersonFact({
+      familyId: ctx.familyId,
+      personId: person.id,
+      factType: input.factType as FactType,
+      value: { [input.fieldName]: input.fieldValue },
+      confidence: input.confidence,
+      evidenceText: input.evidenceText || `Stated during conversation`,
+      createdBy: ctx.userId
+    });
+
+    return {
+      success: true,
+      factId: fact.id,
+      personName: person.displayName,
+      message: `Recorded fact: ${input.fieldName} = "${input.fieldValue}" for ${person.displayName}.`
+    };
+  }
+};
+
+export const updatePersonFactTool: AgentToolDefinition = {
+  name: "update_person_fact",
+  description: "Update or confirm a person's recorded biographical fact.",
+  riskLevel: "moderate",
+  schema: z.object({
+    factId: z.string().describe("ID of the fact to update"),
+    value: z.record(z.any()).optional().describe("Updated fact fields"),
+    status: z.enum(["pending", "confirmed", "rejected", "disputed"]).optional()
+  }),
+  execute: async (input, ctx) => {
+    const updated = updatePersonFact(input.factId, ctx.familyId, {
+      value: input.value,
+      status: input.status,
+      reviewedBy: ctx.userId
+    });
+
+    if (!updated) {
+      return { success: false, message: `Fact "${input.factId}" not found.` };
+    }
+
+    return { success: true, fact: updated, message: `Updated fact "${input.factId}".` };
+  }
+};
+
+export const searchPersonFactsTool: AgentToolDefinition = {
+  name: "search_person_facts",
+  description: "Search for specific facts recorded across family members.",
+  riskLevel: "low",
+  schema: z.object({
+    personId: z.string().optional().describe("Filter by person ID or name"),
+    factType: z.string().optional().describe("Filter by fact type"),
+    query: z.string().optional().describe("Search keyword inside fact values")
+  }),
+  execute: async (input, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    let targetPersonId = input.personId;
+    if (input.personId && !graph.people[input.personId]) {
+      const lower = input.personId.toLowerCase().trim();
+      const p = Object.values(graph.people).find(
+        (item) => item.displayName.toLowerCase().trim() === lower || item.aliases.some((a) => a.toLowerCase().trim() === lower)
+      );
+      if (p) targetPersonId = p.id;
+    }
+
+    const facts = searchPersonFacts(ctx.familyId, {
+      ...(targetPersonId ? { personId: targetPersonId } : {}),
+      ...(input.factType ? { factType: input.factType as FactType } : {}),
+      ...(input.query ? { query: input.query } : {})
+    });
+
+    return {
+      total: facts.length,
+      facts: facts.map((f) => ({
+        id: f.id,
+        personName: f.subjectPersonId ? graph.people[f.subjectPersonId]?.displayName : undefined,
+        factType: f.factType,
+        value: f.proposedValue,
+        status: f.status
+      }))
+    };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// 9. FAMILY CONTEXT & FULL TREE RETRIEVAL
+// ---------------------------------------------------------------------------
+
+export const getFamilyTreeTool: AgentToolDefinition = {
+  name: "get_family_tree",
+  description: "Retrieve the full family tree structure including all members, relationships, generation layers, and active orientation.",
+  riskLevel: "low",
+  schema: z.object({}),
+  execute: async (_, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    const people = Object.values(graph.people) as GraphPerson[];
+    const relationships = Object.values(graph.relationships) as GraphRelationship[];
+
+    return {
+      totalMembers: people.length,
+      totalRelationships: relationships.length,
+      people: people.map((p) => ({
+        id: p.id,
+        name: p.displayName,
+        birthYear: p.birthYear,
+        birthPlace: p.birthPlace,
+        gender: p.gender,
+        aliases: p.aliases
+      })),
+      relationships: relationships.map((r) => ({
+        id: r.id,
+        from: graph.people[r.fromPersonId]?.displayName || r.fromPersonId,
+        to: graph.people[r.toPersonId]?.displayName || r.toPersonId,
+        type: r.type
+      }))
+    };
+  }
+};
+
+export const getFamilyContextTool: AgentToolDefinition = {
+  name: "get_family_context",
+  description: "Get high-level summary of the family heritage archive, member count, key branches, and recent updates.",
+  riskLevel: "low",
+  schema: z.object({}),
+  execute: async (_, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    const people = Object.values(graph.people) as GraphPerson[];
+    const relationships = Object.values(graph.relationships) as GraphRelationship[];
+    const memories = Object.values(graph.memories || {}) as GraphMemory[];
+
+    return {
+      familyId: ctx.familyId,
+      memberCount: people.length,
+      relationshipCount: relationships.length,
+      memoryCount: memories.length,
+      activeUser: ctx.userId,
+      keyMembers: people.slice(0, 8).map((p) => p.displayName)
+    };
+  }
+};
+
+export const searchFamilyMembersTool: AgentToolDefinition = {
+  name: "search_family_members",
+  description: "Find family members using multi-attribute search (name, hometown, alive status, gender).",
+  riskLevel: "low",
+  schema: z.object({
+    name: z.string().optional().describe("Name or nickname to match"),
+    hometown: z.string().optional().describe("Birth place or hometown"),
+    gender: z.enum(["male", "female", "other"]).optional(),
+    isLiving: z.boolean().optional()
+  }),
+  execute: async (input, ctx) => {
+    const graph = getGraph(ctx.familyId);
+    let people = Object.values(graph.people) as GraphPerson[];
+
+    if (input.name) {
+      const q = input.name.toLowerCase().trim();
+      people = people.filter((p) => p.displayName.toLowerCase().includes(q) || p.aliases.some((a) => a.toLowerCase().includes(q)));
+    }
+    if (input.hometown) {
+      const q = input.hometown.toLowerCase().trim();
+      people = people.filter((p) => p.birthPlace && p.birthPlace.toLowerCase().includes(q));
+    }
+    if (input.gender) {
+      people = people.filter((p) => p.gender === input.gender);
+    }
+    if (input.isLiving !== undefined) {
+      people = people.filter((p) => (input.isLiving ? !p.deathDate : !!p.deathDate));
+    }
+
+    return {
+      totalMatches: people.length,
+      members: people.map((p) => ({
+        id: p.id,
+        name: p.displayName,
+        gender: p.gender,
+        birthYear: p.birthYear,
+        birthPlace: p.birthPlace,
+        aliases: p.aliases
+      }))
     };
   }
 };

@@ -16,19 +16,58 @@ import {
   getFamilyActivityTool,
   shareMemoryTool,
   listContributorMemoriesTool,
+  getRelationshipsTool,
+  updateRelationshipTool,
+  correctRelationshipTool,
+  validateFamilyGraphTool,
+  createMemoryTool,
+  updateMemoryTool,
+  attachPeopleToMemoryTool,
+  searchMemoriesTool,
+  retrieveMemoryDetailsTool,
+  addPersonFactTool,
+  updatePersonFactTool,
+  searchPersonFactsTool,
+  getFamilyTreeTool,
+  getFamilyContextTool,
+  searchFamilyMembersTool,
   ToolContext
 } from "../tools/family-tools.js";
 
 const ALL_TOOLS: AgentToolDefinition[] = [
+  // People
   searchPeopleTool,
   getPersonDetailsTool,
   createPersonTool,
   updatePersonTool,
   addPersonAliasTool,
+  searchFamilyMembersTool,
+
+  // Relationships
+  getRelationshipsTool,
   createRelationshipTool,
+  updateRelationshipTool,
+  correctRelationshipTool,
+  validateFamilyGraphTool,
   getRelationshipPathTool,
   getAncestorsTool,
   getDescendantsTool,
+
+  // Memories & Stories (Preserving unedited raw narratives)
+  createMemoryTool,
+  updateMemoryTool,
+  attachPeopleToMemoryTool,
+  searchMemoriesTool,
+  retrieveMemoryDetailsTool,
+
+  // Facts (Structured biographical evidence)
+  addPersonFactTool,
+  updatePersonFactTool,
+  searchPersonFactsTool,
+
+  // Family & Tree Context
+  getFamilyTreeTool,
+  getFamilyContextTool,
   changeTreeOrientationTool,
   createLifeEventTool,
   retrievePersonTimelineTool,

@@ -127,6 +127,26 @@ export interface LifeEvent {
   createdAt: string;
 }
 
+export interface GraphMemory {
+  id: string;
+  familyId: string;
+  title: string;
+  narrative: string;
+  peopleInvolved: string[]; // Person IDs or names
+  approximatePeriod?: string | null | undefined;
+  approximateDate?: string | null | undefined;
+  location?: string | null | undefined;
+  traditions?: string[] | undefined;
+  sourceConversationId?: string | null | undefined;
+  sourceType: "conversation" | "audio" | "image" | "document" | "manual";
+  sourceUri?: string | null | undefined;
+  mediaAttachments?: Array<{ type: "image" | "audio" | "video"; uri: string; title?: string }> | undefined;
+  mediaUrls?: string[] | undefined;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string | undefined;
+}
+
 export interface AuditLogEntry {
   id: string;
   familyId: string;
@@ -144,6 +164,7 @@ interface FamilyGraphData {
   suggestions: Record<string, FactSuggestion>;
   mergeCandidates: Record<string, PersonMergeCandidate>;
   events: Record<string, LifeEvent>;
+  memories?: Record<string, GraphMemory>;
   auditLogs: AuditLogEntry[];
 }
 
@@ -165,6 +186,7 @@ function loadGraph(): FamilyGraphData {
     suggestions: {},
     mergeCandidates: {},
     events: {},
+    memories: {},
     auditLogs: []
   };
 }
@@ -174,6 +196,7 @@ function saveGraph(data: FamilyGraphData): void {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
+    if (!data.memories) data.memories = {};
     fs.writeFileSync(GRAPH_FILE, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
     console.error("Error saving graph file:", err);
@@ -522,12 +545,14 @@ export function getGraph(familyId: string): {
   relationships: Record<string, GraphRelationship>;
   suggestions: Record<string, FactSuggestion>;
   events: Record<string, LifeEvent>;
+  memories: Record<string, GraphMemory>;
 } {
   const data = loadGraph();
   const people: Record<string, GraphPerson> = {};
   const relationships: Record<string, GraphRelationship> = {};
   const suggestions: Record<string, FactSuggestion> = {};
   const events: Record<string, LifeEvent> = {};
+  const memories: Record<string, GraphMemory> = {};
 
   for (const p of Object.values(data.people)) {
     if (p.familyId === familyId) people[p.id] = p;
@@ -541,8 +566,11 @@ export function getGraph(familyId: string): {
   for (const e of Object.values(data.events)) {
     if (e.familyId === familyId) events[e.id] = e;
   }
+  for (const m of Object.values(data.memories || {})) {
+    if (m.familyId === familyId) memories[m.id] = m;
+  }
 
-  return { people, relationships, suggestions, events };
+  return { people, relationships, suggestions, events, memories };
 }
 
 export function recordLifeEvent(input: {
@@ -583,4 +611,344 @@ export function updateRelationship(
   data.relationships[id] = updated;
   saveGraph(data);
   return updated;
+}
+
+// ---------------------------------------------------------------------------
+// MEMORIES & STORIES OPERATIONS
+// ---------------------------------------------------------------------------
+
+export function createMemory(input: Omit<GraphMemory, "id" | "createdAt" | "updatedAt">): GraphMemory {
+  const data = loadGraph();
+  if (!data.memories) data.memories = {};
+  const id = `mem_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const now = new Date().toISOString();
+  const memory: GraphMemory = {
+    ...input,
+    id,
+    createdAt: now,
+    updatedAt: now
+  };
+  data.memories[id] = memory;
+  saveGraph(data);
+  return memory;
+}
+
+export function updateMemory(
+  id: string,
+  familyId: string,
+  updates: Partial<Omit<GraphMemory, "id" | "familyId" | "createdAt" | "updatedAt">>
+): GraphMemory | null {
+  const data = loadGraph();
+  if (!data.memories) data.memories = {};
+  const mem = data.memories[id];
+  if (!mem || mem.familyId !== familyId) return null;
+  const updated: GraphMemory = {
+    ...mem,
+    ...updates,
+    updatedAt: new Date().toISOString()
+  };
+  data.memories[id] = updated;
+  saveGraph(data);
+  return updated;
+}
+
+export function getMemory(id: string, familyId: string): GraphMemory | null {
+  const data = loadGraph();
+  const mem = data.memories?.[id];
+  if (!mem || mem.familyId !== familyId) return null;
+  return mem;
+}
+
+export function listMemories(
+  familyId: string,
+  options?: { personId?: string; query?: string; limit?: number }
+): GraphMemory[] {
+  const data = loadGraph();
+  let list = Object.values(data.memories || {}).filter((m) => m.familyId === familyId);
+
+  if (options?.personId) {
+    const pid = options.personId.toLowerCase();
+    list = list.filter((m) => m.peopleInvolved.some((p) => p.toLowerCase() === pid));
+  }
+
+  if (options?.query) {
+    const q = options.query.toLowerCase().trim();
+    list = list.filter(
+      (m) =>
+        m.title.toLowerCase().includes(q) ||
+        m.narrative.toLowerCase().includes(q) ||
+        (m.location && m.location.toLowerCase().includes(q)) ||
+        (m.traditions && m.traditions.some((t) => t.toLowerCase().includes(q)))
+    );
+  }
+
+  list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (options?.limit) list = list.slice(0, options.limit);
+  return list;
+}
+
+export function attachPeopleToMemory(
+  memoryId: string,
+  personIds: string[],
+  familyId: string
+): GraphMemory | null {
+  const data = loadGraph();
+  if (!data.memories) data.memories = {};
+  const mem = data.memories[memoryId];
+  if (!mem || mem.familyId !== familyId) return null;
+
+  for (const pid of personIds) {
+    if (!mem.peopleInvolved.includes(pid)) {
+      mem.peopleInvolved.push(pid);
+    }
+  }
+  mem.updatedAt = new Date().toISOString();
+  saveGraph(data);
+  return mem;
+}
+
+// ---------------------------------------------------------------------------
+// FACT OPERATIONS
+// ---------------------------------------------------------------------------
+
+export function addPersonFact(input: {
+  familyId: string;
+  personId: string;
+  factType: FactType;
+  value: Record<string, unknown>;
+  confidence?: number;
+  evidenceText?: string;
+  sourceConversationId?: string;
+  sourceMemoryId?: string;
+  createdBy?: string;
+}): FactSuggestion {
+  return createFactSuggestion({
+    familyId: input.familyId,
+    factType: input.factType,
+    subjectPersonId: input.personId,
+    proposedValue: input.value,
+    confidence: input.confidence ?? 0.95,
+    extractionModel: "agent-pipeline",
+    createdBy: input.createdBy,
+    evidence: [
+      {
+        conversationId: input.sourceConversationId,
+        memoryId: input.sourceMemoryId,
+        excerpt: input.evidenceText || "Stated by user in conversation"
+      }
+    ]
+  });
+}
+
+export function updatePersonFact(
+  factId: string,
+  familyId: string,
+  updates: {
+    value?: Record<string, unknown>;
+    status?: FactSuggestion["status"];
+    reviewedBy?: string;
+  }
+): FactSuggestion | null {
+  const data = loadGraph();
+  const fact = data.suggestions[factId];
+  if (!fact || fact.familyId !== familyId) return null;
+
+  if (updates.value) fact.proposedValue = { ...fact.proposedValue, ...updates.value };
+  if (updates.status) fact.status = updates.status;
+  if (updates.reviewedBy) fact.reviewedBy = updates.reviewedBy;
+  fact.reviewedAt = new Date().toISOString();
+
+  saveGraph(data);
+  return fact;
+}
+
+export function searchPersonFacts(
+  familyId: string,
+  options?: { personId?: string; factType?: FactType; query?: string }
+): FactSuggestion[] {
+  const data = loadGraph();
+  let list = Object.values(data.suggestions).filter((s) => s.familyId === familyId);
+
+  if (options?.personId) {
+    list = list.filter((s) => s.subjectPersonId === options.personId || s.objectPersonId === options.personId);
+  }
+  if (options?.factType) {
+    list = list.filter((s) => s.factType === options.factType);
+  }
+  if (options?.query) {
+    const q = options.query.toLowerCase().trim();
+    list = list.filter((s) => JSON.stringify(s.proposedValue).toLowerCase().includes(q));
+  }
+  return list;
+}
+
+// ---------------------------------------------------------------------------
+// RELATIONSHIP CORRECTION & GRAPH VALIDATION
+// ---------------------------------------------------------------------------
+
+export function validateFamilyGraph(familyId: string): {
+  valid: boolean;
+  errors: string[];
+  cycleFound: boolean;
+  selfLinks: string[];
+  contradictions: string[];
+} {
+  const data = loadGraph();
+  const rels = Object.values(data.relationships).filter((r) => r.familyId === familyId);
+  const errors: string[] = [];
+  const selfLinks: string[] = [];
+  const contradictions: string[] = [];
+  let cycleFound = false;
+
+  // 1. Check self links
+  for (const r of rels) {
+    if (r.fromPersonId === r.toPersonId) {
+      const err = `Person "${r.fromPersonId}" cannot have a relationship with themselves (${r.type}).`;
+      errors.push(err);
+      selfLinks.push(r.fromPersonId);
+    }
+  }
+
+  // 2. Check contradictory reciprocal parent/child edges
+  const edgeSet = new Set<string>();
+  for (const r of rels) {
+    const key = `${r.fromPersonId}:${r.toPersonId}:${r.type}`;
+    edgeSet.add(key);
+
+    if (r.type === "parent") {
+      if (edgeSet.has(`${r.toPersonId}:${r.fromPersonId}:parent`)) {
+        const err = `Contradiction: Person "${r.fromPersonId}" and "${r.toPersonId}" are listed as parents of each other.`;
+        errors.push(err);
+        contradictions.push(err);
+        cycleFound = true;
+      }
+    }
+  }
+
+  // 3. Parent-child cycle detection using DFS
+  const parentGraph = new Map<string, string[]>(); // child -> parents
+  for (const r of rels) {
+    if (r.type === "parent" || r.type === "adoptive_parent") {
+      if (!parentGraph.has(r.toPersonId)) parentGraph.set(r.toPersonId, []);
+      parentGraph.get(r.toPersonId)!.push(r.fromPersonId);
+    }
+  }
+
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+
+  function dfs(node: string, path: string[]): boolean {
+    visited.add(node);
+    recursionStack.add(node);
+
+    for (const parent of parentGraph.get(node) || []) {
+      if (!visited.has(parent)) {
+        if (dfs(parent, [...path, parent])) return true;
+      } else if (recursionStack.has(parent)) {
+        cycleFound = true;
+        errors.push(`Ancestry cycle detected: ${[...path, parent].join(" -> ")}`);
+        return true;
+      }
+    }
+
+    recursionStack.delete(node);
+    return false;
+  }
+
+  for (const node of parentGraph.keys()) {
+    if (!visited.has(node)) {
+      dfs(node, [node]);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    cycleFound,
+    selfLinks,
+    contradictions
+  };
+}
+
+export function correctRelationship(input: {
+  familyId: string;
+  personAId: string;
+  personBId: string;
+  newRelation: RelationshipType;
+  oldRelation?: string;
+  evidenceText?: string;
+  actorId?: string;
+}): {
+  success: boolean;
+  relationship?: GraphRelationship;
+  previousRelation?: string;
+  message: string;
+} {
+  const data = loadGraph();
+  const rels = Object.values(data.relationships).filter((r) => r.familyId === input.familyId);
+  const now = new Date().toISOString();
+
+  // Find existing relationship between personA and personB
+  const existing = rels.find(
+    (r) =>
+      (r.fromPersonId === input.personAId && r.toPersonId === input.personBId) ||
+      (r.fromPersonId === input.personBId && r.toPersonId === input.personAId)
+  );
+
+  let targetRel: GraphRelationship;
+  let prevType = existing ? existing.type : undefined;
+
+  if (existing) {
+    targetRel = existing;
+    targetRel.fromPersonId = input.personAId;
+    targetRel.toPersonId = input.personBId;
+    targetRel.type = input.newRelation;
+    targetRel.status = "confirmed";
+    targetRel.evidenceText = input.evidenceText || `Corrected by user to ${input.newRelation}`;
+    targetRel.reviewedBy = input.actorId || "user";
+    targetRel.reviewedAt = now;
+    targetRel.updatedAt = now;
+  } else {
+    targetRel = {
+      id: `rel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      familyId: input.familyId,
+      fromPersonId: input.personAId,
+      toPersonId: input.personBId,
+      type: input.newRelation,
+      status: "confirmed",
+      evidenceText: input.evidenceText || `Created via correction to ${input.newRelation}`,
+      reviewedBy: input.actorId || "user",
+      reviewedAt: now,
+      createdAt: now,
+      updatedAt: now
+    };
+    data.relationships[targetRel.id] = targetRel;
+  }
+
+  // Pre-validate that this correction does not create an illegal cycle
+  saveGraph(data);
+  const validation = validateFamilyGraph(input.familyId);
+  if (!validation.valid && validation.cycleFound) {
+    // Revert if cycle created
+    if (existing && prevType) {
+      targetRel.type = prevType;
+      saveGraph(data);
+    }
+    return {
+      success: false,
+      message: `Cannot change relationship to ${input.newRelation}: it creates an impossible cycle in the family tree.`
+    };
+  }
+
+  const pA = data.people[input.personAId]?.displayName || input.personAId;
+  const pB = data.people[input.personBId]?.displayName || input.personBId;
+
+  return {
+    success: true,
+    relationship: targetRel,
+    ...(prevType ? { previousRelation: prevType } : {}),
+    message: prevType
+      ? `Corrected relationship between ${pA} and ${pB} from ${prevType} to ${input.newRelation}.`
+      : `Set relationship: ${pA} is ${input.newRelation} of ${pB}.`
+  };
 }

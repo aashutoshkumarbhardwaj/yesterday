@@ -76,16 +76,63 @@ export interface StoredFamilySession {
 }
 
 let cachedSession: StoredFamilySession | null = null;
-let customServerUrl: string = process.env.EXPO_PUBLIC_API_URL || 'https://shortcuts-barely-patrol-max.trycloudflare.com';
+let customServerUrl: string = process.env.EXPO_PUBLIC_API_URL || 'http://10.127.224.146:3333';
 let initialized = false;
+
+const CANDIDATE_URLS = [
+  'http://10.127.224.146:3333',
+  process.env.EXPO_PUBLIC_API_URL,
+  'http://10.0.2.2:3333',
+  'http://127.0.0.1:3333',
+  'http://localhost:3333'
+].filter(Boolean) as string[];
+
+export async function detectActiveServerUrl(): Promise<string> {
+  // If current URL is already working, return it
+  try {
+    const res = await fetch(`${getServerUrl()}/health`, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) return getServerUrl();
+  } catch {
+    // try fallback candidates below
+  }
+
+  for (const candidate of CANDIDATE_URLS) {
+    try {
+      let testUrl = candidate;
+      const res = await fetch(`${testUrl}/health`, { signal: AbortSignal.timeout(1500) });
+      if (res.ok) {
+        setServerUrl(testUrl);
+        return testUrl;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+
+  return getServerUrl();
+}
 
 export async function initSyncSession(): Promise<StoredFamilySession | null> {
   if (initialized) return cachedSession;
   try {
     const savedUrl = await getSetting('server_url');
-    if (savedUrl && savedUrl.trim()) {
+    // If the saved URL is valid and not an expired previous tunnel, use it
+    if (
+      savedUrl &&
+      savedUrl.trim() &&
+      !savedUrl.includes('trycloudflare.com') &&
+      !savedUrl.includes('localhost') &&
+      !savedUrl.includes('127.0.0.1')
+    ) {
       customServerUrl = savedUrl.trim();
+    } else {
+      customServerUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.127.224.146:3333';
+      await setSetting('server_url', customServerUrl);
     }
+
+    // Auto-verify and detect active server URL in background
+    detectActiveServerUrl().catch(() => {});
+
     const savedSession = await getSetting('family_session');
     if (savedSession) {
       cachedSession = JSON.parse(savedSession) as StoredFamilySession;
@@ -99,7 +146,11 @@ export async function initSyncSession(): Promise<StoredFamilySession | null> {
 }
 
 export function getServerUrl(): string {
-  return customServerUrl;
+  let url = customServerUrl;
+  if (Platform.OS === 'android' && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+    url = 'http://10.127.224.146:3333';
+  }
+  return url;
 }
 
 export function setServerUrl(url: string) {

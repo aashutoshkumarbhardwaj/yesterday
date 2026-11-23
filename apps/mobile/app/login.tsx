@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "../src/components/Screen";
 import { colors, radius, spacing } from "../src/theme";
 import { useAuth } from "../src/lib/auth-context";
+import { detectActiveServerUrl } from "../src/lib/sync-client";
 
 // Curated avatar assets representing the multi-generational family
 const AVATARS = {
@@ -45,7 +46,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [googleEmail, setGoogleEmail] = useState("");
   const [googleName, setGoogleName] = useState("");
-  const [showManualGoogle, setShowManualGoogle] = useState(false);
+  const [showManualGoogle, setShowManualGoogle] = useState(true);
 
   // If already logged in, show profile card with option to log out
   if (user) {
@@ -151,7 +152,15 @@ export default function LoginScreen() {
 
   // Handle Google Login
   const handleGoogleWeb = async () => {
-    await loginWithGoogleWeb();
+    try {
+      setLoading(true);
+      await detectActiveServerUrl();
+      await loginWithGoogleWeb();
+    } catch (err) {
+      Alert.alert("Google Sign-In", err instanceof Error ? err.message : "Could not open Google Sign-In.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle One-Tap Google Direct Login
@@ -635,56 +644,6 @@ export default function LoginScreen() {
               <Text style={styles.googleSecurityNote}>
                 Secure authentication powered by Google Identity. We only access your basic profile (name, email, avatar).
               </Text>
-
-              {/* Optional Manual / Offline Sign-in Toggle */}
-              <View style={styles.orDivider}>
-                <View style={styles.orLine} />
-                <Pressable onPress={() => setShowManualGoogle((prev) => !prev)}>
-                  <Text style={styles.orText}>
-                    {showManualGoogle ? "HIDE MANUAL SIGN-IN ▲" : "MANUAL EMAIL SIGN-IN ▼"}
-                  </Text>
-                </Pressable>
-                <View style={styles.orLine} />
-              </View>
-
-              {showManualGoogle ? (
-                <View style={styles.manualBox}>
-                  <Text style={styles.inputLabel}>YOUR FULL NAME</Text>
-                  <TextInput
-                    value={googleName}
-                    onChangeText={setGoogleName}
-                    placeholder="e.g. Ramesh Sharma"
-                    placeholderTextColor={colors.muted}
-                    style={styles.input}
-                  />
-
-                  <Text style={styles.inputLabel}>GOOGLE EMAIL ADDRESS *</Text>
-                  <TextInput
-                    value={googleEmail}
-                    onChangeText={setGoogleEmail}
-                    placeholder="your.email@gmail.com"
-                    placeholderTextColor={colors.muted}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    style={styles.input}
-                  />
-
-                  <Pressable
-                    onPress={handleGoogleDirect}
-                    disabled={loading}
-                    style={styles.googleManualBtn}
-                  >
-                    {loading ? (
-                      <ActivityIndicator size="small" color={colors.white} />
-                    ) : (
-                      <>
-                        <Ionicons name="mail-outline" size={17} color={colors.white} />
-                        <Text style={styles.googleManualBtnText}>Sign In with This Email</Text>
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-              ) : null}
             </View>
           )}
 

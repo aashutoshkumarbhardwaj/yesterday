@@ -25,8 +25,8 @@ export async function sarvamChat(
     responseFormat?: "json" | "text";
   }
 ): Promise<string> {
-  const model = options?.model ?? "sarvam-105b-conversations";
-  const maxTokens = options?.maxTokens ?? 1024;
+  const model = options?.model ?? "sarvam-105b";
+  const maxTokens = options?.maxTokens ?? 2048;
   const temperature = options?.temperature ?? 0.3;
 
   const response = await fetch("https://api.sarvam.ai/v2/chat/completions", {

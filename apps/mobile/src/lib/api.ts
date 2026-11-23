@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
-import { getServerUrl } from './sync-client';
+import { detectActiveServerUrl, getServerUrl } from './sync-client';
 
 const API_TOKEN = process.env.EXPO_PUBLIC_API_TOKEN;
 
@@ -34,6 +34,7 @@ export async function transcribeAudio(uri: string, filename = "family-recording.
   const cleanUri = Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('content://')
     ? `file://${uri}`
     : uri;
+  const server = await detectActiveServerUrl();
 
   // 1. Preferred rock-solid Base64 JSON upload (bypasses Android OkHttp FormData parsing issues)
   try {
@@ -41,7 +42,7 @@ export async function transcribeAudio(uri: string, filename = "family-recording.
       encoding: 'base64' as any
     });
     if (base64Audio) {
-      const response = await fetch(`${getServerUrl()}/v1/ai/transcribe`, {
+      const response = await fetch(`${server}/v1/ai/transcribe`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -64,7 +65,7 @@ export async function transcribeAudio(uri: string, filename = "family-recording.
   const form = new FormData();
   form.append("file", { uri: cleanUri, name: filename, type: "audio/mp4" } as unknown as Blob);
   form.append("mode", "codemix");
-  const response = await fetch(`${getServerUrl()}/v1/ai/transcribe`, {
+  const response = await fetch(`${server}/v1/ai/transcribe`, {
     method: "POST",
     headers: headers(),
     body: form
@@ -76,12 +77,13 @@ export async function understandImage(uri: string, familyContext?: string, mimeT
   const cleanUri = Platform.OS === 'android' && !uri.startsWith('file://') && !uri.startsWith('content://')
     ? `file://${uri}`
     : uri;
+  const server = await detectActiveServerUrl();
 
   // 1. Try Base64 JSON first (reliable across all Expo versions)
   try {
     const base64Image = await FileSystem.readAsStringAsync(cleanUri, { encoding: 'base64' as any });
     if (base64Image) {
-      const response = await fetch(`${getServerUrl()}/v1/ai/understand-image`, {
+      const response = await fetch(`${server}/v1/ai/understand-image`, {
         method: "POST",
         headers: { "content-type": "application/json", ...headers() },
         body: JSON.stringify({ imageBase64: base64Image, mimeType, familyContext, filename })
@@ -96,7 +98,7 @@ export async function understandImage(uri: string, familyContext?: string, mimeT
   const form = new FormData();
   form.append("file", { uri: cleanUri, name: filename, type: mimeType } as unknown as Blob);
   if (familyContext) form.append("familyContext", familyContext);
-  const response = await fetch(`${getServerUrl()}/v1/ai/understand-image`, {
+  const response = await fetch(`${server}/v1/ai/understand-image`, {
     method: "POST",
     headers: headers(),
     body: form
@@ -317,7 +319,8 @@ export async function chatWithAgent(input: {
   currentOrientation?: 'top_to_bottom' | 'bottom_to_top' | 'left_to_right' | 'right_to_left';
   familyId?: string;
 }) {
-  const response = await fetch(`${getServerUrl()}/v1/agent/chat`, {
+  const server = await detectActiveServerUrl();
+  const response = await fetch(`${server}/v1/agent/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers() },
     body: JSON.stringify(input)
@@ -326,14 +329,16 @@ export async function chatWithAgent(input: {
 }
 
 export async function fetchRevisions(familyId = 'default-family') {
-  const response = await fetch(`${getServerUrl()}/v1/agent/revisions?familyId=${encodeURIComponent(familyId)}`, {
+  const server = await detectActiveServerUrl();
+  const response = await fetch(`${server}/v1/agent/revisions?familyId=${encodeURIComponent(familyId)}`, {
     headers: headers()
   });
   return parseResponse<{ revisions: Array<{ id: string; operation: string; targetEntity: string; timestamp: string; status: string; userInstruction?: string }> }>(response);
 }
 
 export async function undoAgentAction(revisionId: string, familyId = 'default-family') {
-  const response = await fetch(`${getServerUrl()}/v1/agent/undo`, {
+  const server = await detectActiveServerUrl();
+  const response = await fetch(`${server}/v1/agent/undo`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...headers() },
     body: JSON.stringify({ revisionId, familyId })
@@ -342,8 +347,9 @@ export async function undoAgentAction(revisionId: string, familyId = 'default-fa
 }
 
 export async function fetchKinship(targetPersonId: string, referencePersonId = 'user_default', familyId = 'default-family') {
+  const server = await detectActiveServerUrl();
   const response = await fetch(
-    `${getServerUrl()}/v1/genealogy/kinship?targetPersonId=${encodeURIComponent(targetPersonId)}&referencePersonId=${encodeURIComponent(referencePersonId)}&familyId=${encodeURIComponent(familyId)}`,
+    `${server}/v1/genealogy/kinship?targetPersonId=${encodeURIComponent(targetPersonId)}&referencePersonId=${encodeURIComponent(referencePersonId)}&familyId=${encodeURIComponent(familyId)}`,
     { headers: headers() }
   );
   return parseResponse<{
@@ -356,8 +362,9 @@ export async function fetchKinship(targetPersonId: string, referencePersonId = '
 }
 
 export async function fetchGenealogyTree(familyId = 'default-family', referencePersonId = 'user_default', orientation = 'top_to_bottom') {
+  const server = await detectActiveServerUrl();
   const response = await fetch(
-    `${getServerUrl()}/v1/genealogy/tree?familyId=${encodeURIComponent(familyId)}&referencePersonId=${encodeURIComponent(referencePersonId)}&orientation=${encodeURIComponent(orientation)}`,
+    `${server}/v1/genealogy/tree?familyId=${encodeURIComponent(familyId)}&referencePersonId=${encodeURIComponent(referencePersonId)}&orientation=${encodeURIComponent(orientation)}`,
     { headers: headers() }
   );
   return parseResponse<{

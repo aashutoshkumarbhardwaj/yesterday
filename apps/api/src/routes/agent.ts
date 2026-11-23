@@ -8,6 +8,7 @@ import { getGraph, GraphPerson } from "../modules/graph/graph-store.js";
 
 const chatSchema = z.object({
   message: z.string().min(1).max(5000),
+  conversationId: z.string().optional(),
   history: z
     .array(
       z.object({
@@ -34,7 +35,7 @@ export async function registerAgentRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "INVALID_INPUT", details: parse.error.flatten() });
     }
 
-    const { message, history, focusPersonId, currentOrientation, familyId } = parse.data;
+    const { message, conversationId, history, focusPersonId, currentOrientation, familyId } = parse.data;
 
     // In a production setup, user is resolved from JWT auth header
     const userId = (request.headers["x-user-id"] as string) || "user_default";
@@ -42,11 +43,13 @@ export async function registerAgentRoutes(app: FastifyInstance) {
     try {
       const response = await processFamilyAgentChat({
         message,
+        conversationId,
         ...(history ? { history } : {}),
         context: {
           familyId,
           userId,
           userRole: "admin", // default authorized user
+          conversationId,
           ...(focusPersonId ? { focusPersonId } : {}),
           ...(currentOrientation ? { currentOrientation } : {})
         }

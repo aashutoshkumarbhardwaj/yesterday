@@ -33,7 +33,7 @@ import {
   type SuggestedRelationship
 } from '../src/lib/database';
 import { interviewTreeAgent, type TreeInterviewResponse } from '../src/lib/family-ai';
-import { getServerUrl, setServerUrl, syncWithCloud, testServerConnection } from '../src/lib/sync-client';
+import { detectActiveServerUrl, getServerUrl, setServerUrl, syncWithCloud, testServerConnection } from '../src/lib/sync-client';
 
 interface MessageUI {
   id: string;
@@ -171,6 +171,7 @@ export default function TreeBuilderScreen() {
       // 1. First attempt to call the full Agentic Family Subsystem on the backend
       let assistantMsg: MessageUI | null = null;
       try {
+        await detectActiveServerUrl();
         const agentRes = await chatWithAgent({
           message: text,
           history: newHistory.slice(-8).map((m) => ({ role: m.role, content: m.content }))
@@ -431,11 +432,9 @@ export default function TreeBuilderScreen() {
 
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>Family Historian</Text>
-            <Text style={styles.headerTitle}>Oral History Interview</Text>
             <View style={styles.statusBadge}>
               <View style={styles.liveDot} />
               <Text style={styles.headerSubtitle}>{people.length} Relatives Mapped</Text>
-              <Text style={styles.headerSubtitle}>{people.length} in Family Tree</Text>
             </View>
           </View>
 
@@ -449,7 +448,6 @@ export default function TreeBuilderScreen() {
               style={styles.iconBtn}
             >
               <Ionicons name="server-outline" size={19} color={colors.terra} />
-              <Ionicons name="settings-outline" size={18} color={colors.muted} />
             </Pressable>
 
             <Pressable onPress={() => setIsAddModalOpen(true)} style={styles.headerAddBtn}>
@@ -469,7 +467,6 @@ export default function TreeBuilderScreen() {
             style={[styles.switchOption, viewMode === 'chat' && styles.switchOptionActive]}
           >
             <Ionicons name="chatbubbles" size={15} color={viewMode === 'chat' ? colors.white : colors.ink} />
-            <Ionicons name="mic-outline" size={15} color={viewMode === 'chat' ? colors.white : colors.ink} />
             <Text style={[styles.switchText, viewMode === 'chat' && styles.switchTextActive]}>
               Oral Interview
             </Text>
@@ -478,11 +475,9 @@ export default function TreeBuilderScreen() {
             onPress={() => setViewMode('tree')}
             style={[styles.switchOption, viewMode === 'tree' && styles.switchOptionActive]}
           >
-            <Ionicons name="git-network" size={15} color={viewMode === 'tree' ? colors.white : colors.ink} />
             <Ionicons name="git-network-outline" size={15} color={viewMode === 'tree' ? colors.white : colors.ink} />
             <Text style={[styles.switchText, viewMode === 'tree' && styles.switchTextActive]}>
               Visual Tree ({people.length})
-              Living Tree ({people.length})
             </Text>
           </Pressable>
         </View>
@@ -549,7 +544,6 @@ export default function TreeBuilderScreen() {
                     {isAssistant ? (
                       <View style={styles.assistantAvatar}>
                         <Ionicons name="sparkles" size={14} color={colors.terra} />
-                        <Ionicons name="book-outline" size={13} color={colors.terra} />
                       </View>
                     ) : null}
 
@@ -561,7 +555,6 @@ export default function TreeBuilderScreen() {
                       {/* Conflict Alert Banner */}
                       {m.conflicts && m.conflicts.length > 0 ? (
                         <View style={styles.conflictBox}>
-                          <Ionicons name="warning" size={15} color="#A23A2A" />
                           <Ionicons name="alert-circle-outline" size={15} color="#A23A2A" />
                           <Text style={styles.conflictText}>{m.conflicts[0]?.message}</Text>
                         </View>
@@ -571,7 +564,6 @@ export default function TreeBuilderScreen() {
                       {m.extractedPeople && m.extractedPeople.length > 0 ? (
                         <View style={styles.extractedBox}>
                           <Text style={styles.extractedLabel}>ADDED TO TREE</Text>
-                          <Text style={styles.extractedLabel}>ADDED TO LINEAGE</Text>
                           <View style={styles.chipsRow}>
                             {m.extractedPeople.map((p, idx) => (
                               <View key={idx} style={styles.personChip}>
@@ -591,7 +583,6 @@ export default function TreeBuilderScreen() {
                           <View style={styles.chipsRow}>
                             {m.extractedRelationships.map((r, idx) => (
                               <View key={idx} style={styles.relChip}>
-                                <Ionicons name="link" size={12} color={colors.terra} />
                                 <Ionicons name="git-commit-outline" size={12} color={colors.terra} />
                                 <Text style={styles.chipText}>
                                   {r.personA} ➔ {r.type} ➔ {r.personB}
@@ -607,9 +598,7 @@ export default function TreeBuilderScreen() {
                         <View style={styles.actionCard}>
                           <View style={styles.actionHeader}>
                             <Ionicons name="flash" size={14} color={colors.terra} />
-                            <Text style={styles.actionHeaderTitle}>AGENT ACTIONS EXECUTED</Text>
-                            <Ionicons name="bookmark-outline" size={14} color={colors.terra} />
-                            <Text style={styles.actionHeaderTitle}>RECORDED IN FAMILY ARCHIVE</Text>
+                            <Text style={styles.actionHeaderTitle}>ACTIONS EXECUTED</Text>
                           </View>
                           {m.actionsExecuted.map((act, aIdx) => (
                             <View key={aIdx} style={styles.actionRow}>
@@ -630,12 +619,9 @@ export default function TreeBuilderScreen() {
                           <View style={styles.refusalHeader}>
                             <Ionicons name="shield-checkmark" size={15} color="#A23A2A" />
                             <Text style={styles.refusalTitle}>Heritage Preservation Guardrail</Text>
-                            <Ionicons name="shield-checkmark-outline" size={15} color="#A23A2A" />
-                            <Text style={styles.refusalTitle}>Family Archive Protected</Text>
                           </View>
                           <Text style={styles.refusalBody}>
-                            The AI Agent cannot delete relatives, memories, or lineage records to prevent accidental loss of heritage. Use the tree screen to manage profiles directly.
-                            Family lineage records are protected against accidental removal. You can safely edit names or add notes directly in your family tree.
+                            The AI Agent cannot delete relatives, memories, or lineage records to prevent accidental loss of heritage. Family records are safely protected.
                           </Text>
                         </View>
                       ) : null}
@@ -647,8 +633,7 @@ export default function TreeBuilderScreen() {
               {busy ? (
                 <View style={styles.typingRow}>
                   <ActivityIndicator size="small" color={colors.terra} />
-                  <Text style={styles.typingText}>Historian is connecting relatives and memories...</Text>
-                  <Text style={styles.typingText}>Carefully documenting your family memories...</Text>
+                  <Text style={styles.typingText}>Historian is updating your family archive...</Text>
                 </View>
               ) : null}
             </ScrollView>
@@ -659,10 +644,8 @@ export default function TreeBuilderScreen() {
                 <View style={styles.recDot} />
                 <Text style={styles.recTimer}>{recordingTimerFormatted}</Text>
                 <Text style={styles.recText} numberOfLines={1}>Recording voice... Speak clearly</Text>
-                <Text style={styles.recText} numberOfLines={1}>Recording voice memory...</Text>
                 <Pressable onPress={toggleRecording} style={styles.stopRecordingBtn}>
                   <Text style={styles.stopRecordingBtnText}>Finish & Send</Text>
-                  <Text style={styles.stopRecordingBtnText}>Finish & Save</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -672,7 +655,6 @@ export default function TreeBuilderScreen() {
               <View style={styles.transcribingBanner}>
                 <ActivityIndicator size="small" color={colors.white} />
                 <Text style={styles.transcribingText}>Transcribing speech with Sarvam AI...</Text>
-                <Text style={styles.transcribingText}>Listening and transcribing your voice memory...</Text>
               </View>
             ) : null}
 

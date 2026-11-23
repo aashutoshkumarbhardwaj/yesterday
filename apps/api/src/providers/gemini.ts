@@ -111,7 +111,9 @@ export async function answerFromArchive(input: { question: string; context: { pe
 }
 
 export async function transcribeAudioWithGemini(input: { bytes: Buffer; mimeType?: string }): Promise<string> {
-  const prompt = "Transcribe the following speech accurately word for word. Output ONLY the transcription text. Do not add any preamble, conversational commentary, or notes. If speech is in Hindi, Indian English, or code-mixed, preserve the words as spoken.";
+  const prompt = `Transcribe the following speech accurately word for word. Output ONLY the transcription text. Do not add any preamble, conversational commentary, or notes. 
+Support all Indian regional languages, dialects, and mother tongues natively, with first-class fidelity for Bhojpuri (भोजपुरी), Maithili (मैथिली), Awadhi (अवधी), Magahi (मगही), Hindi (हिंदी), and Indian English. 
+Preserve code-mixed sentences, regional kinship terms, elder idioms, and colloquial phrasing exactly as spoken, transcribing Indic speech in clear Devanagari script.`;
   let mimeType = input.mimeType || "audio/mp4";
   if (mimeType === "audio/m4a" || mimeType === "audio/x-m4a") mimeType = "audio/mp4";
 

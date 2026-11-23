@@ -180,7 +180,10 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
   // 4. Google OAuth Web Flow Start
   app.get("/v1/auth/google/login", async (request, reply) => {
+    const { return_to } = request.query as { return_to?: string };
+    const returnTo = return_to || "yesterday://auth";
     const clientId = config.auth.googleClientId;
+
     if (!clientId) {
       return reply.code(503).send({
         error: "GOOGLE_OAUTH_NOT_CONFIGURED",
@@ -188,11 +191,15 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
     }
 
-    const { return_to } = request.query as { return_to?: string };
-    const redirectUri = `${config.auth.publicApiUrl}/v1/auth/google/callback`;
+    const host = (request.headers["x-forwarded-host"] as string) || request.headers.host;
+    const proto = (request.headers["x-forwarded-proto"] as string) || (host?.includes("localhost") || host?.includes("10.") || host?.includes("127.0.0.1") ? "http" : "https");
+    const baseUrl = config.auth.publicApiUrl && !config.auth.publicApiUrl.includes("trycloudflare.com")
+      ? config.auth.publicApiUrl
+      : (host ? `${proto}://${host}` : "http://10.127.224.146:3333");
+    const redirectUri = `${baseUrl}/v1/auth/google/callback`;
 
     // Encode state so callback knows where to redirect the user (supports Expo Go & Standalone app)
-    const stateObj = { returnTo: return_to || "yesterday://auth" };
+    const stateObj = { returnTo };
     const stateStr = Buffer.from(JSON.stringify(stateObj)).toString("base64url");
 
     const googleAuthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -246,7 +253,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
     const clientId = config.auth.googleClientId;
     const clientSecret = config.auth.googleClientSecret;
-    const redirectUri = `${config.auth.publicApiUrl}/v1/auth/google/callback`;
+    const host = (request.headers["x-forwarded-host"] as string) || request.headers.host;
+    const proto = (request.headers["x-forwarded-proto"] as string) || (host?.includes("localhost") || host?.includes("10.") || host?.includes("127.0.0.1") ? "http" : "https");
+    const baseUrl = config.auth.publicApiUrl && !config.auth.publicApiUrl.includes("trycloudflare.com")
+      ? config.auth.publicApiUrl
+      : (host ? `${proto}://${host}` : "http://10.127.224.146:3333");
+    const redirectUri = `${baseUrl}/v1/auth/google/callback`;
 
     try {
       if (!clientSecret) {
